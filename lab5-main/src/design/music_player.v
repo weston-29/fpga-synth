@@ -128,7 +128,8 @@ module music_player(
     wire [15:0] sample_out0; 
 
     dffr pipeline_ff_nsg (.clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated));
-    dffr #(.WIDTH(16)) pipeline_ff_sample_out (.clk(clk), .r(reset), .d(sample_out0), .q(sample_out));
+    //dffr #(.WIDTH(16)) pipeline_ff_sample_out (.clk(clk), .r(reset), .d(sample_out0), .q(sample_out));
+    assign sample_out = sample_out0;
 
     assign new_sample_generated0 = generate_next_sample;
     codec_conditioner codec_conditioner(
