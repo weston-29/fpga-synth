@@ -40,11 +40,14 @@ module wave_display (
     // Shift Register for Sample Preservation
     wire [7:0] cur_sample, prev_sample;
     
+    // Adjust read value for smaller screen size
+    wire [7:0] read_value_adjusted = {1'b0, read_value[7:1]} + 8'd32; // functionally same as >>, without ambiguity about added zero
+    
     dffre #(8) cur_samp_reg (
         .clk(clk),
         .r(reset),
         .en(addr_changed), // ONLY grab RAM output when we go to a new addr
-        .d(read_value),
+        .d(read_value_adjusted),
         .q(cur_sample)
     );
     
