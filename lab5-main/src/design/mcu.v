@@ -1,38 +1,46 @@
+`define SWIDTH 1
+`define PAUSE 1'b0
+`define PLAY 1'b1
+
 module mcu(
     input clk,
     input reset,
     input play_button,
     input next_button,
-    output reg play,
-    output reg reset_player,
-    output reg [1:0] song,
+    output play,
+    output reset_player,
+    output [1:0] song,
     input song_done
 );
 
-    always @(posedge clk) begin
-    
-        if (reset) begin
-            song <= 2'b00;
-            reset_player <= 1'b1;
-            play <= 1'b0;
-            
-        end else begin
-            reset_player <= 1'b0;
-            
-            if(next_button) begin
-                song <= song + 1'b1;
-                play <= 1'b0;
-                reset_player <= 1'b1;
-            end
-            else if(song_done) begin
-                song <= song + 1'b1;
-                play <= 1'b0;
-                reset_player <= 1'b1;
-            end
-            else if(play_button) begin
-                play <= ~play;
-            end
-        end
+    dffre #(.WIDTH(2)) song_reg (
+        .clk(clk),
+        .r(reset),
+        .en(next_button || song_done),
+        .d(song + 1'b1),
+        .q(song)
+    );
+
+    wire state;
+    reg  next_state;
+
+    dffr #(.WIDTH(`SWIDTH)) playing_reg (
+        .clk(clk),
+        .r(reset),
+        .d(next_state),
+        .q(state)
+    );
+
+    assign play = (state == `PLAY);
+    assign reset_player = next_button || song_done;
+
+    always @* begin
+        case (state)
+            `PAUSE:  next_state = play_button ? `PLAY : state;
+            `PLAY:   next_state =
+                (play_button || next_button || song_done) ? `PAUSE : state;
+            default: next_state = `PAUSE;
+        endcase
     end
-    
+
 endmodule

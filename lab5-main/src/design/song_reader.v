@@ -1,75 +1,73 @@
-module song_reader(
-input clk,
-input reset,
-input play,
-input [1:0] song,
-input note_done,
-output reg song_done,
-output reg [5:0] note,
-output reg [5:0] duration,
-output reg new_note
-);
-    localparam WAIT_PLAY = 2'b00;
-    localparam FETCH_NOTE = 2'b01;
-    localparam LATCH_NOTE = 2'b10;
-    localparam WAIT_DONE = 2'b11;
-    
-    reg [1:0] state;
-    reg [4:0] counter;
-    wire [11:0] rom_out;
-    
-    song_rom init_rom (.clk(clk),.addr({song, counter}), .dout(rom_out));
+`define SONG_WIDTH 5
+`define NOTE_WIDTH 6
+`define DURATION_WIDTH 6
 
-    always @(posedge clk) begin
-    
-        if (reset) begin
-            song_done <= 1'b0;
-            state <= WAIT_PLAY;
-            counter <= 5'b0;
-            duration <= 6'b0;
-            new_note <= 1'b0;
-            note <= 6'b0;
-     
-        end else begin
-            new_note <= 1'b0;
-            
-            case(state)
-                WAIT_PLAY: begin
-                    song_done <= 1'b0;
-                    if(play) begin
-                        state <= FETCH_NOTE;
-                    end
-                end
-                FETCH_NOTE: begin
-                    state <= LATCH_NOTE;
-                end
-                LATCH_NOTE: begin
-                    note <= rom_out [11:6];
-                    duration <= rom_out [5:0];
-                    if(rom_out [5:0] == 6'b0) begin
-                        song_done <= 1'b1;
-                        state <= WAIT_PLAY;
-                    end else begin
-                        new_note <= 1'b1;
-                        state <= WAIT_DONE;
-                        $display("Playing note %d of song %d, which is note %d duration %d", 
-                        counter, song, rom_out[11:6], rom_out[5:0]);
-                    end
-                end
-                WAIT_DONE: begin
-                    if(!play) begin
-                        state <= WAIT_DONE;
-                    end else if (note_done) begin
-                        if(counter == 5'd31) begin
-                            state <= WAIT_PLAY;
-                            song_done <= 1'b1;
-                        end else begin
-                            counter <= counter + 1'b1;
-                            state <= FETCH_NOTE;
-                        end
-                    end
-                end
-            endcase
-        end
-    end    
+// ----------------------------------------------
+// Define State Assignments
+// ----------------------------------------------
+`define SWIDTH 3
+`define PAUSED             3'b000
+`define WAIT               3'b001
+`define INCREMENT_ADDRESS  3'b010
+`define RETRIEVE_NOTE      3'b011
+`define NEW_NOTE_READY     3'b100
+
+
+module song_reader(
+    input clk,
+    input reset,
+    input play,
+    input [1:0] song,
+    input note_done,
+    output wire song_done,
+    output wire [5:0] note,
+    output wire [5:0] duration,
+    output wire new_note
+);
+    wire [`SONG_WIDTH-1:0] curr_note_num, next_note_num;
+    wire [`NOTE_WIDTH + `DURATION_WIDTH -1:0] note_and_duration;
+    wire [`SONG_WIDTH + 1:0] rom_addr = {song, curr_note_num};
+
+    wire [`SWIDTH-1:0] state;
+    reg  [`SWIDTH-1:0] next;
+
+    // For identifying when we reach the end of a song
+    wire overflow;
+
+    dffr #(`SONG_WIDTH) note_counter (
+        .clk(clk),
+        .r(reset),
+        .d(next_note_num),
+        .q(curr_note_num)
+    );
+    dffr #(`SWIDTH) fsm (
+        .clk(clk),
+        .r(reset),
+        .d(next),
+        .q(state)
+    );
+
+    song_rom rom(.clk(clk), .addr(rom_addr), .dout(note_and_duration));
+
+    always @(*) begin
+        case (state)
+            `PAUSED:            next = play ? `RETRIEVE_NOTE : `PAUSED;
+            `RETRIEVE_NOTE:     next = play ? `NEW_NOTE_READY : `PAUSED;
+            `NEW_NOTE_READY:    next = play ? `WAIT: `PAUSED;
+            `WAIT:              next = !play ? `PAUSED
+                                             : (note_done ? `INCREMENT_ADDRESS
+                                                          : `WAIT);
+            `INCREMENT_ADDRESS: next = (play && ~overflow) ? `RETRIEVE_NOTE
+                                                           : `PAUSED;
+            default:            next = `PAUSED;
+        endcase
+    end
+
+    assign {overflow, next_note_num} =
+        (state == `INCREMENT_ADDRESS) ? {1'b0, curr_note_num} + 1
+                                      : {1'b0, curr_note_num};
+    assign new_note = (state == `NEW_NOTE_READY);
+    assign {note, duration} = note_and_duration;
+    assign song_done = overflow;
+
 endmodule

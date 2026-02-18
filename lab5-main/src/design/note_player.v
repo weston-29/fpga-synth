@@ -1,70 +1,54 @@
 module note_player(
     input clk,
     input reset,
-    input play_enable,      
-    input [5:0] note_to_load,  
-    input [5:0] duration_to_load, 
-    input load_new_note,  
-    output done_with_note,  
-    input beat,  
-    input generate_next_sample,  
-    output [15:0] sample_out,  
-    output new_sample_ready  
+    input play_enable,  // When high we play, when low we don't.
+    input [5:0] note_to_load,  // The note to play
+    input [5:0] duration_to_load,  // The duration of the note to play
+    input load_new_note,  // Tells us when we have a new note to load
+    output done_with_note,  // When we are done with the note this stays high.
+    input beat,  // This is our 1/48th second beat
+    input generate_next_sample,  // Tells us when the codec wants a new sample
+    output [15:0] sample_out,  // Our sample output
+    output new_sample_ready  // Tells the codec when we've got a sample
 );
 
-    wire [5:0] cur_ctr, next_ctr;
-    wire [5:0] note_in; 
+    wire [19:0] step_size;
+    wire [5:0] freq_rom_in;
 
-    // holds note being played now
-    dffre #(6) freq_reg (
-        .clk(clk), 
-        .r(reset), 
+    dffre #(.WIDTH(6)) freq_reg (
+        .clk(clk),
+        .r(reset),
         .en(load_new_note),
-        .d(note_to_load), 
-        .q(note_in) 
-    ); 
-    
-    wire [19:0] rom_dout;     // intermediate wire to correctly delay rom by 1 cycle
-    wire [19:0] note_stepsize; // Now driven by the register
+        .d(note_to_load),
+        .q(freq_rom_in)
+    );
 
-    frequency_rom f_rom (
-        .clk(clk), 
-        .addr(note_in), 
-        .dout(rom_dout)       // ROM drives the register input
-    );
-    
-    dffr #(20) step_size_reg (
+    frequency_rom freq_rom(
         .clk(clk),
-        .r(reset),
-        .d(rom_dout),         // Input from ROM
-        .q(note_stepsize)      // Output to sine_reader
+        .addr(freq_rom_in),
+        .dout(step_size)
     );
-    
-    // If loading a new note, start at duration_to_load
-    // Otherwise, if beat is high, decrement
-    wire [5:0] decremented_ctr = (cur_ctr == 6'b0) ? 6'b0 : (cur_ctr - 6'd1); // To prevent 0-wrapping, but does this latch the counter at 0?
-    assign next_ctr = load_new_note ? duration_to_load : decremented_ctr;
 
-    dffre #(6) countdown (
-        .clk(clk),
-        .r(reset),
-        // enable the countdown ff if we are loading a note OR if we are playing and a beat occurs
-        .en(load_new_note || (play_enable && beat)), 
-        .d(next_ctr),
-        .q(cur_ctr)
-    );
-    
-    // get instantaneous sampple from sine ROM
-    sine_reader read_sin (
+    sine_reader sine_read(
         .clk(clk),
         .reset(reset),
-        .step_size(note_stepsize), 
-        .generate_next(generate_next_sample && play_enable), // to fix note playing indefinitely bug, gate on play_enable too
+        .step_size(step_size),
+        .generate_next(play_enable && generate_next_sample),
         .sample_ready(new_sample_ready),
         .sample(sample_out)
     );
-    
-    // note done when the counter hits zero.
-    assign done_with_note = (cur_ctr == 6'b0) && !load_new_note; // changed to give time for duration to get into ff
+
+    wire [5:0] state, next_state;
+    dffre #(.WIDTH(6)) state_reg (
+        .clk(clk),
+        .r(reset),
+        .en((beat || load_new_note) && play_enable),
+        .d(next_state),
+        .q(state)
+    );
+    assign next_state = (reset || done_with_note || load_new_note)
+                        ? duration_to_load : state - 1;
+
+    assign done_with_note = (state == 6'b0) && beat;
 
 endmodule

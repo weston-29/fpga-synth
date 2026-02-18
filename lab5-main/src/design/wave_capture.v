@@ -1,120 +1,91 @@
-module wave_capture (
-    input  wire        clk,
-    input  wire        reset,
-    input  wire        new_sample_ready,
-    input  wire [15:0] new_sample_in,
-    input  wire        wave_display_idle,
+// Define State Assignments
+`define SWIDTH 2
+`define ARMED  2'b00
+`define ACTIVE 2'b01
+`define WAIT   2'b10
 
-    output wire [8:0]  write_address,
-    output wire        write_enable,
-    output wire [7:0]  write_sample,
-    output wire        read_index
+module wave_capture (
+    input clk,
+    input reset,
+    input new_sample_ready,
+    input [15:0] new_sample_in,
+    input wave_display_idle,
+    output wire [8:0] write_address,
+    output wire write_enable,
+    output wire [7:0] write_sample,
+    output wire read_index
 );
 
-    localparam [1:0]
-        S_ARMED  = 2'd0,
-        S_ACTIVE = 2'd1,
-        S_WAIT   = 2'd2;
+    // State and Internal Registers
+    wire [`SWIDTH-1:0] state;
+    reg  [`SWIDTH-1:0] next_state;
 
-    reg [1:0] state, state_next;
+    wire [7:0] counter, next_counter;
+    wire [15:0] prev_sample;
+    wire curr_read_index, next_read_index;
 
-    reg [7:0] count, count_next;
+    // FSM State Register
+    dffr #(`SWIDTH) state_reg (
+        .clk(clk), .r(reset), .d(next_state), .q(state)
+    );
 
-    reg read_index_r, read_index_next;
+    // 8-bit Counter for RAM addresses (0-255)
+    dffr #(8) counter_reg (
+        .clk(clk), .r(reset), .d(next_counter), .q(counter)
+    );
 
-    reg [15:0] prev_sample, prev_sample_next;
+    // Read Index Register (toggles to support double buffering)
+    dffr #(1) read_index_reg (
+        .clk(clk), .r(reset), .d(next_read_index), .q(curr_read_index)
+    );
 
-    reg        we_r;
-    reg [8:0]  waddr_r;
-    reg [7:0]  wdata_r;
+    // Register to store the previous sample to detect zero-crossing
+    // Updates only when a new sample is actually ready
+    dffre #(16) prev_sample_reg (
+        .clk(clk), .r(reset), .en(new_sample_ready), 
+        .d(new_sample_in), .q(prev_sample)
+    );
 
-    assign write_enable  = we_r;
-    assign write_address = waddr_r;
-    assign write_sample  = wdata_r;
-    assign read_index    = read_index_r;
+    // Trigger Logic & Sample Adjustment
 
-    wire [15:0] biased_sample;
-    assign biased_sample = new_sample_in + 16'h8000;
-    
-    wire [7:0] sample_u8;
-    assign sample_u8 = biased_sample[15:8];
+    // Positive zero crossing: previous sample was negative (MSB=1), 
+    // current sample is positive or zero (MSB=0).
+    wire positive_zero_crossing = prev_sample[15] && ~new_sample_in[15];
 
+    // Convert signed 2's complement to unsigned 8-bit [0, 255]
+    // Inverting the MSB translates the range -128...127 to 0...255
+    assign write_sample = {~new_sample_in[15], new_sample_in[14:8]};
 
-    wire signed [15:0] cur_s  = $signed(new_sample_in);
-    wire signed [15:0] prev_s = $signed(prev_sample);
-
-    wire pos_zero_cross = (prev_s < 0) && (cur_s > 0);
-
-    always @* begin
-        state_next      = state;
-        count_next      = count;
-        read_index_next = read_index_r;
-        prev_sample_next= prev_sample;
-
-        we_r    = 1'b0;
-        waddr_r = 9'd0;
-        wdata_r = 8'd0;
-
+    // FSM Logic
+    always @(*) begin
         case (state)
-            S_ARMED: begin
-                count_next = 8'd0;
-
-                if (new_sample_ready) begin
-                    if (pos_zero_cross) begin
-                        we_r    = 1'b1;
-                        waddr_r = {~read_index_r, 8'd0};
-                        wdata_r = sample_u8;
-
-                        count_next = 8'd1;
-                        state_next = S_ACTIVE;
-                    end
-
-                    prev_sample_next = new_sample_in;
-                end
-            end
-
-            S_ACTIVE: begin
-                if (new_sample_ready) begin
-                    we_r    = 1'b1;
-                    waddr_r = {~read_index_r, count};
-                    wdata_r = sample_u8;
-
-                    if (count == 8'd255) begin
-                        state_next = S_WAIT;
-                    end else begin
-                        count_next = count + 8'd1;
-                    end
-                end
-            end
-
-            S_WAIT: begin
-                if (wave_display_idle) begin
-                    read_index_next = ~read_index_r;
-                    state_next      = S_ARMED;
-                    count_next      = 8'd0;
-                    prev_sample_next = 16'd0;
-                end
-            end
-
-            default: begin
-                state_next = S_ARMED;
-                count_next = 8'd0;
-            end
+            // Wait for a positive zero crossing to trigger capture
+            `ARMED:  next_state = (new_sample_ready && positive_zero_crossing) ? `ACTIVE : `ARMED;
+            
+            // Capture 256 samples into RAM
+            `ACTIVE: next_state = (new_sample_ready && counter == 8'd255) ? `WAIT : `ACTIVE;
+            
+            // Wait until the display is idle before switching buffers
+            `WAIT:   next_state = wave_display_idle ? `ARMED : `WAIT;
+            
+            default: next_state = `ARMED;
         endcase
     end
 
-    always @(posedge clk) begin
-        if (reset) begin
-            state        <= S_ARMED;
-            count        <= 8'd0;
-            read_index_r <= 1'b0;
-            prev_sample  <= 16'd0;
-        end else begin
-            state        <= state_next;
-            count        <= count_next;
-            read_index_r <= read_index_next;
-            prev_sample  <= prev_sample_next;
-        end
-    end
+    // Datapath Logic
+
+    // Counter logic: Reset to 0 when entering/staying in ARMED; increment in ACTIVE
+    assign next_counter = (state == `ARMED)  ? 8'd0 :
+                          (state == `ACTIVE && new_sample_ready) ? counter + 8'd1 : 
+                          counter;
+
+    // Toggle read_index only when transitioning from WAIT back to ARMED
+    assign next_read_index = (state == `WAIT && wave_display_idle) ? ~curr_read_index : curr_read_index;
+
+    // RAM signals
+    // Write to the half of RAM currently NOT being read by the display (~curr_read_index)
+    assign write_address = {~curr_read_index, counter};
+    assign write_enable  = (state == `ACTIVE) && new_sample_ready;
+    assign read_index    = curr_read_index;
 
 endmodule

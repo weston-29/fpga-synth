@@ -8,49 +8,37 @@ module sine_reader(
     output wire [15:0] sample
 );
 
-    wire [21:0] cur_adr, next_adr; // for D and Q of main flipflop
-    
-    wire [9:0] rom_adr;
-    wire [15:0] rom_dout;
-    wire invert_bit; // Quadrant LSB
-    wire negate_bit; // Quadrant MSB
-    
-    assign next_adr = cur_adr + {2'b0, step_size};
-    
-    dffre #(22) counter ( // main next address flop
+    //states
+    localparam SWIDTH = 22;
+
+    wire [SWIDTH - 1:0] addr;
+    dffre #(.WIDTH(SWIDTH)) state_reg (
         .clk(clk),
         .r(reset),
         .en(generate_next),
-        .d(next_adr),
-        .q(cur_adr)
+        .d(addr + step_size),
+        .q(addr)
     );
-    
-    // Quadrant Logic
-    assign invert_bit = cur_adr[20]; 
-    assign rom_adr = invert_bit ? ~cur_adr[19:10] : cur_adr[19:10];
-    
-    sine_rom sample_rom (
+
+    wire [9:0] sine_rom_addr = addr[20] ? ~addr[19:10] : addr[19:10];
+    wire [15:0] sine_rom_out;
+    sine_rom sineRom (
         .clk(clk),
-        .addr(rom_adr),
-        .dout(rom_dout)
+        .addr(sine_rom_addr),
+        .dout(sine_rom_out)
     );
-    
-    wire delayed_negate;
-    
-    dffr #(1) sign_delay ( // delay quadrant sine bit by one cycle to get negation timing at output
+    assign sample = addr[21] ? -sine_rom_out : sine_rom_out;
+
+    wire almost_ready;
+    dff #(.WIDTH(1)) ready_1 (
         .clk(clk),
-        .r(reset),
-        .d(cur_adr[21]), // MSB
-        .q(delayed_negate)
-    );
-    
-    dffr #(1) ready_delay ( // delay generate_next by one cycle to get sample_ready timing
-        .clk(clk),
-        .r(reset),
         .d(generate_next),
+        .q(almost_ready)
+    );
+    dff #(.WIDTH(1)) ready_2 (
+        .clk(clk),
+        .d(almost_ready),
         .q(sample_ready)
     );
-    
-    assign sample = delayed_negate ? (16'b0 - rom_dout) : rom_dout;
 
 endmodule

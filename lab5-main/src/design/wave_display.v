@@ -67,7 +67,7 @@ module wave_display (
     // NOTE: Samples lag 1 address behind, causing a 2-pixel rightward shift.
     // This is imperceptible and keeps y self-consistent with the current pixel.
     
-    assign valid_pixel = in_bounds
+    assign valid_pixel = in_bounds  // maybe ff this instead of delaying addr
                       && (y_val >= lower_bound)
                       && (y_val <= upper_bound);
 
