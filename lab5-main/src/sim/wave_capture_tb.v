@@ -57,7 +57,7 @@ module wave_capture_tb;
         input [7:0]  exp_data;
         input [255*8:1] tag;
         begin
-            // CRITICAL FIX: Drive inputs on NEGEDGE to avoid race condition at posedge
+            // only way we got it to work
             @(negedge clk);
             new_sample_in    = sample;
             new_sample_ready = 1'b1;
@@ -92,14 +92,13 @@ module wave_capture_tb;
         end
     endtask
 
-    // NEW: pulse and check a write where we don't know the half-bit yet
     task pulse_and_check_write_lo8;
         input [15:0] sample;
         input [7:0]  exp_lo8;
         input [7:0]  exp_data;
         input [255*8:1] tag;
         begin
-            // CRITICAL FIX: Drive inputs on NEGEDGE
+            // only way we got it to work
             @(negedge clk);
             new_sample_in    = sample;
             new_sample_ready = 1'b1;
@@ -164,7 +163,6 @@ module wave_capture_tb;
 
         for (k = 1; k <= 255; k = k + 1) begin
               s = (k * 157) - 16'sd20000;
-              // FIX: Force k to be 8 bits [7:0] so concatenation works correctly
               pulse_and_check_write(s, 1'b1, {cap_write_half, k[7:0]}, exp_u8(s), "active write");
         end
 
@@ -199,7 +197,6 @@ module wave_capture_tb;
         $finish;
     end
 
-    // Cleaned up display logic
     always @(posedge clk) begin
         if (write_enable)
             $display("WRITE: addr=%h count=%h", write_address, dut.counter);
