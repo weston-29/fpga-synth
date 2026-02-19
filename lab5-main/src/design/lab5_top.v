@@ -116,7 +116,7 @@ module lab5_top(
 //      The music player
 //  ****************************************************************************
 //       
-    wire new_frame;
+    wire new_frame, new_frame1; // added new_frame1 to match lab4 top
     wire [15:0] codec_sample, flopped_sample;
     wire new_sample, flopped_new_sample;
     music_player #(.BEAT_COUNT(BEAT_COUNT)) music_player(
@@ -147,6 +147,9 @@ module lab5_top(
     assign leds_rgb_0 = codec_sample[15:13];
     assign leds_rgb_1 = codec_sample[11:9];
     assign led = codec_sample[15:12];
+    
+    // added the below line in debugging to match lab4_top and address pitch shift/distortion issue.
+    dffr pipeline_ff_new_frame (.clk(clk_100), .r(reset), .d(new_frame), .q(new_frame1)); 
 
     adau1761_codec adau1761_codec(
         .clk_100(clk_100),

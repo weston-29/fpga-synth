@@ -22,7 +22,8 @@ module wave_display (
     
     // Window to middle two quadrants
     // y[9] is 0 in top half, {x[9], x[8]} == 10 || 01 in Q2 and Q3
-    wire in_bounds = (~y[9]) && (x[9] ^ x[8]);
+    // final check handles vertical line at start of wave
+    wire in_bounds = (~y[9]) && (x[9] ^ x[8]) && (x > 11'b00100000010);
 
     // Set up signal to enable acceptance of new sample when read_addr changes
     wire [8:0] last_addr;
