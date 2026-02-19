@@ -1,4 +1,3 @@
-// Define State Assignments
 `define SWIDTH 2
 `define ARMED  2'b00
 `define ACTIVE 2'b01
@@ -40,33 +39,40 @@ module wave_capture (
     );
 
     // Register to store the previous sample to detect zero-crossing
-    // Updates only when a new sample is actually ready
+    // Uses dffre from library
     dffre #(16) prev_sample_reg (
         .clk(clk), .r(reset), .en(new_sample_ready), 
         .d(new_sample_in), .q(prev_sample)
     );
 
-    // Trigger Logic & Sample Adjustment
-
-    // Positive zero crossing: previous sample was negative (MSB=1), 
-    // current sample is positive or zero (MSB=0).
+    // Trigger Logic 
+    // Positive zero crossing: Prev was Neg (1), Current is Pos (0)
     wire positive_zero_crossing = prev_sample[15] && ~new_sample_in[15];
+    
+    // Logic to detect if we are triggering THIS CYCLE
+    wire triggering = (state == `ARMED && new_sample_ready && positive_zero_crossing);
 
     // Convert signed 2's complement to unsigned 8-bit [0, 255]
-    // Inverting the MSB translates the range -128...127 to 0...255
     assign write_sample = {~new_sample_in[15], new_sample_in[14:8]};
 
     // FSM Logic
     always @(*) begin
+        next_state = state; // Default stay in current state
         case (state)
-            // Wait for a positive zero crossing to trigger capture
-            `ARMED:  next_state = (new_sample_ready && positive_zero_crossing) ? `ACTIVE : `ARMED;
+            `ARMED:  begin
+                if (triggering) 
+                    next_state = `ACTIVE;
+            end
             
-            // Capture 256 samples into RAM
-            `ACTIVE: next_state = (new_sample_ready && counter == 8'd255) ? `WAIT : `ACTIVE;
+            `ACTIVE: begin
+                if (new_sample_ready && counter == 8'd255) 
+                    next_state = `WAIT;
+            end
             
-            // Wait until the display is idle before switching buffers
-            `WAIT:   next_state = wave_display_idle ? `ARMED : `WAIT;
+            `WAIT:   begin
+                if (wave_display_idle) 
+                    next_state = `ARMED;
+            end
             
             default: next_state = `ARMED;
         endcase
@@ -74,18 +80,22 @@ module wave_capture (
 
     // Datapath Logic
 
-    // Counter logic: Reset to 0 when entering/staying in ARMED; increment in ACTIVE
-    assign next_counter = (state == `ARMED)  ? 8'd0 :
-                          (state == `ACTIVE && new_sample_ready) ? counter + 8'd1 : 
+    // Counter logic:
+    // 1. If ARMED and NOT triggering, hold at 0.
+    // 2. If ACTIVE (and ready) OR Triggering, increment.
+    assign next_counter = (state == `ARMED && !triggering) ? 8'd0 :
+                          ((state == `ACTIVE && new_sample_ready) || triggering) ? counter + 8'd1 : 
                           counter;
 
     // Toggle read_index only when transitioning from WAIT back to ARMED
     assign next_read_index = (state == `WAIT && wave_display_idle) ? ~curr_read_index : curr_read_index;
 
     // RAM signals
-    // Write to the half of RAM currently NOT being read by the display (~curr_read_index)
     assign write_address = {~curr_read_index, counter};
-    assign write_enable  = (state == `ACTIVE) && new_sample_ready;
+    
+    // Enable write if we are ACTIVE *OR* if we are currently triggering
+    assign write_enable  = ((state == `ACTIVE) || triggering) && new_sample_ready;
+    
     assign read_index    = curr_read_index;
 
 endmodule
