@@ -59,20 +59,23 @@ module music_player(
 //      Song Reader
 //  ****************************************************************************
 //
+    wire beat;
     wire [5:0] note_to_play;
     wire [5:0] duration_for_note;
+    wire [2:0] note_metadata;
     wire new_note;
-    wire note_done;
+    wire note_done_unused;
     song_reader song_reader(
         .clk(clk),
         .reset(reset | reset_player),
         .play(play),
         .song(current_song),
+        .beat(beat),
         .song_done(song_done),
         .note(note_to_play),
         .duration(duration_for_note),
-        .new_note(new_note),
-        .note_done(note_done)
+        .note_metadata(note_metadata),
+        .new_note(new_note)
     );
 
 //   
@@ -80,7 +83,6 @@ module music_player(
 //      Note Player
 //  ****************************************************************************
 //  
-    wire beat;
     wire generate_next_sample, generate_next_sample0;
     wire [15:0] note_sample, note_sample0;
     wire note_sample_ready, note_sample_ready0;
@@ -96,8 +98,9 @@ module music_player(
         .play_enable(play),
         .note_to_load(note_to_play),
         .duration_to_load(duration_for_note),
+        .note_metadata(note_metadata),
         .load_new_note(new_note),
-        .done_with_note(note_done),
+        .done_with_note(note_done_unused),
         .beat(beat),
         .generate_next_sample(generate_next_sample),
         .sample_out(note_sample0),
