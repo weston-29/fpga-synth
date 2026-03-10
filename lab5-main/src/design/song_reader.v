@@ -72,8 +72,9 @@ module song_reader(
             `RETRIEVE_CMD:      next = play ? `NEW_NOTE_READY : `PAUSED;
             `NEW_NOTE_READY:    next = !play ? `PAUSED
                                              : (command_is_wait ? `LOAD_WAIT : `INCREMENT_ADDRESS);
-            `LOAD_WAIT:         next = !play ? `PAUSED
-                                             : ((wait_ticks == 0) ? `INCREMENT_ADDRESS : `WAIT);
+            // Treat WAIT 0 as an end-of-song hold marker to avoid racing through
+            // padded ROM entries and abruptly changing songs/tempo perception.
+            `LOAD_WAIT:         next = !play ? `PAUSED : `WAIT;
             `WAIT:              next = !play ? `PAUSED
                                              : ((beat && (wait_counter == 1)) ? `INCREMENT_ADDRESS : `WAIT);
             `INCREMENT_ADDRESS: next = (play && ~overflow) ? `RETRIEVE_CMD
