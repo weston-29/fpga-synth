@@ -74,9 +74,17 @@ module lab5_top(
 
     wire [31:0] pix_data;
     wire [3:0] r, g, b;
-    wire [7:0] r_1, g_1, b_1;
 
     wire vde, hsync, vsync, blank;
+
+    // Final display-layer signals
+    wire       wave_pixel_on;
+    wire [7:0] wave_r, wave_g, wave_b;
+
+    wire       hud_pixel_on;
+    wire [7:0] hud_r, hud_g, hud_b;
+
+    wire [7:0] final_r, final_g, final_b;
 
     // ------------------------------------------------------------
     // Debounced one-pulse buttons
@@ -106,7 +114,7 @@ module lab5_top(
     wire new_sample;
     wire flopped_new_sample;
 
-    // New enhanced-waveform signals
+    // Enhanced waveform signals
     wire [15:0] voice_wave_0;
     wire [15:0] voice_wave_1;
     wire [15:0] voice_wave_2;
@@ -192,17 +200,47 @@ module lab5_top(
         .y(y[9:0]),
         .valid(vde),
         .vsync(vsync),
-        .r(r_1),
-        .g(g_1),
-        .b(b_1)
+        .pixel_on(wave_pixel_on),
+        .r(wave_r),
+        .g(wave_g),
+        .b(wave_b)
     );
+
+    // ------------------------------------------------------------
+    // HUD overlay
+    // ------------------------------------------------------------
+    hud hud_overlay (
+        .x(x[10:0]),
+        .y(y[9:0]),
+        .valid(vde),
+        .pixel_on(hud_pixel_on),
+        .r(hud_r),
+        .g(hud_g),
+        .b(hud_b)
+    );
+
+    // ------------------------------------------------------------
+    // Final layer compositor
+    // HUD has priority over waveform
+    // ------------------------------------------------------------
+    assign final_r = hud_pixel_on  ? hud_r  :
+                     wave_pixel_on ? wave_r :
+                     8'h00;
+
+    assign final_g = hud_pixel_on  ? hud_g  :
+                     wave_pixel_on ? wave_g :
+                     8'h00;
+
+    assign final_b = hud_pixel_on  ? hud_b  :
+                     wave_pixel_on ? wave_b :
+                     8'h00;
 
     // ------------------------------------------------------------
     // Pack RGB for HDMI
     // ------------------------------------------------------------
-    assign r = r_1[7:4];
-    assign g = g_1[7:4];
-    assign b = b_1[7:4];
+    assign r = final_r[7:4];
+    assign g = final_g[7:4];
+    assign b = final_b[7:4];
 
     assign pix_data = {
         8'b0,
