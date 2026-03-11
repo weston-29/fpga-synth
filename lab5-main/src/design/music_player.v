@@ -1,48 +1,28 @@
-//
-//  music_player module
-//
-//  This music_player module connects up the MCU, song_reader, note_player,
-//  beat_generator, and codec_conditioner. It provides an output that indicates
-//  a new sample (new_sample_generated) which will be used in lab 5.
-//
-
 module music_player(
-    // Standard system clock and reset
     input clk,
     input reset,
 
-    // Our debounced and one-pulsed button inputs.
     input play_button,
     input next_button,
 
-    // The raw new_frame signal from the ac97_if codec.
     input new_frame,
 
-    // This output must go high for one cycle when a new sample is generated.
     output wire new_sample_generated,
+    output wire [15:0] sample_out,
 
-    // Our final output sample to the codec. This needs to be synced to
-    // new_frame.
-    output wire [15:0] sample_out
+    // New display-facing outputs
+    output wire [15:0] voice_wave_0,
+    output wire [15:0] voice_wave_1,
+    output wire [15:0] voice_wave_2,
+    output wire [15:0] sum_wave
 );
-    // The BEAT_COUNT is parameterized so you can reduce this in simulation.
-    // If you reduce this to 100 your simulation will be 10x faster.
     parameter BEAT_COUNT = 1000;
 
-
-//
-//  ****************************************************************************
-//      Master Control Unit
-//  ****************************************************************************
-//   The reset_player output from the MCU is run only to the song_reader because
-//   we don't need to reset any state in the note_player. If we do it may make
-//   a pop when it resets the output sample.
-//
- 
     wire play;
     wire reset_player;
     wire [1:0] current_song;
     wire song_done;
+
     mcu mcu(
         .clk(clk),
         .reset(reset),
@@ -54,17 +34,13 @@ module music_player(
         .song_done(song_done)
     );
 
-//
-//  ****************************************************************************
-//      Song Reader
-//  ****************************************************************************
-//
     wire beat;
     wire [5:0] note_to_play;
     wire [5:0] duration_for_note;
     wire [2:0] note_metadata;
     wire new_note;
     wire note_done_unused;
+
     song_reader song_reader(
         .clk(clk),
         .reset(reset | reset_player),
@@ -78,19 +54,35 @@ module music_player(
         .new_note(new_note)
     );
 
-//   
-//  ****************************************************************************
-//      Note Player
-//  ****************************************************************************
-//  
     wire generate_next_sample, generate_next_sample0;
     wire [15:0] note_sample, note_sample0;
     wire note_sample_ready, note_sample_ready0;
 
-    // These pipeline registers were added to decrease the length of the critical path!
-    dffr pipeline_ff_gen_next_sample (.clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample));
-    dffr #(.WIDTH(16)) pipeline_ff_note_sample (.clk(clk), .r(reset), .d(note_sample0), .q(note_sample));
-    dffr pipeline_ff_new_sample_ready (.clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready));
+    // New display wave pipeline
+    wire [15:0] voice_wave_0_0, voice_wave_1_0, voice_wave_2_0, sum_wave_0;
+
+    dffr pipeline_ff_gen_next_sample (
+        .clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample)
+    );
+    dffr #(.WIDTH(16)) pipeline_ff_note_sample (
+        .clk(clk), .r(reset), .d(note_sample0), .q(note_sample)
+    );
+    dffr pipeline_ff_new_sample_ready (
+        .clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready)
+    );
+
+    dffr #(.WIDTH(16)) pipeline_ff_voice0 (
+        .clk(clk), .r(reset), .d(voice_wave_0_0), .q(voice_wave_0)
+    );
+    dffr #(.WIDTH(16)) pipeline_ff_voice1 (
+        .clk(clk), .r(reset), .d(voice_wave_1_0), .q(voice_wave_1)
+    );
+    dffr #(.WIDTH(16)) pipeline_ff_voice2 (
+        .clk(clk), .r(reset), .d(voice_wave_2_0), .q(voice_wave_2)
+    );
+    dffr #(.WIDTH(16)) pipeline_ff_sumwave (
+        .clk(clk), .r(reset), .d(sum_wave_0), .q(sum_wave)
+    );
 
     note_player note_player(
         .clk(clk),
@@ -104,17 +96,13 @@ module music_player(
         .beat(beat),
         .generate_next_sample(generate_next_sample),
         .sample_out(note_sample0),
-        .new_sample_ready(note_sample_ready0)
+        .new_sample_ready(note_sample_ready0),
+        .voice_wave_0(voice_wave_0_0),
+        .voice_wave_1(voice_wave_1_0),
+        .voice_wave_2(voice_wave_2_0),
+        .sum_wave(sum_wave_0)
     );
-      
-//   
-//  ****************************************************************************
-//      Beat Generator
-//  ****************************************************************************
-//  By default this will divide the generate_next_sample signal (48kHz from the
-//  codec's new_frame input) down by 1000, to 48Hz. If you change the BEAT_COUNT
-//  parameter when instantiating this you can change it for simulation.
-//  
+
     beat_generator #(.WIDTH(10), .STOP(BEAT_COUNT)) beat_generator(
         .clk(clk),
         .reset(reset),
@@ -122,19 +110,16 @@ module music_player(
         .beat(beat)
     );
 
-//  
-//  ****************************************************************************
-//      Codec Conditioner
-//  ****************************************************************************
-//  
     wire new_sample_generated0;
-    wire [15:0] sample_out0; 
+    wire [15:0] sample_out0;
 
-    dffr pipeline_ff_nsg (.clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated));
-    //dffr #(.WIDTH(16)) pipeline_ff_sample_out (.clk(clk), .r(reset), .d(sample_out0), .q(sample_out));
+    dffr pipeline_ff_nsg (
+        .clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated)
+    );
+
     assign sample_out = sample_out0;
-
     assign new_sample_generated0 = generate_next_sample;
+
     codec_conditioner codec_conditioner(
         .clk(clk),
         .reset(reset),

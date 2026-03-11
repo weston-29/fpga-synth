@@ -10,7 +10,13 @@ module note_player(
     input beat,  // This is our 1/48th second beat
     input generate_next_sample,  // Tells us when the codec wants a new sample
     output [15:0] sample_out,  // Our sample output
-    output new_sample_ready  // Tells the codec when we've got a sample
+    output new_sample_ready,  // Tells the codec when we've got a sample
+
+    // New display-facing outputs
+    output wire [15:0] voice_wave_0,
+    output wire [15:0] voice_wave_1,
+    output wire [15:0] voice_wave_2,
+    output wire [15:0] sum_wave
 );
     wire [1:0] requested_voice = note_metadata[1:0];
     wire [1:0] selected_voice = (requested_voice == 2'b11) ? 2'b00 : requested_voice;
@@ -93,6 +99,7 @@ module note_player(
         .sample_ready(ready_2_unused),
         .sample(sample_2)
     );
+
     sine_reader sine_read2_0 (
         .clk(clk),
         .reset(reset),
@@ -117,6 +124,7 @@ module note_player(
         .sample_ready(ready2_2_unused),
         .sample(sample2_2)
     );
+
     sine_reader sine_read3_0 (
         .clk(clk),
         .reset(reset),
@@ -145,8 +153,8 @@ module note_player(
     wire signed [15:0] active_sample_0 = (dur_0 > 0) ? sample_0 : 16'sd0;
     wire signed [15:0] active_sample_1 = (dur_1 > 0) ? sample_1 : 16'sd0;
     wire signed [15:0] active_sample_2 = (dur_2 > 0) ? sample_2 : 16'sd0;
-    // Simple anti-alias guard for upper notes:
-    // disable higher harmonics when fundamentals are already high.
+
+    // Simple anti-alias guard for upper notes
     wire use_h2_0 = (freq_in_0 <= 6'd43);
     wire use_h2_1 = (freq_in_1 <= 6'd43);
     wire use_h2_2 = (freq_in_2 <= 6'd43);
@@ -161,8 +169,7 @@ module note_player(
     wire signed [15:0] active_sample3_1 = (dur_1 > 0 && use_h3_1) ? sample3_1 : 16'sd0;
     wire signed [15:0] active_sample3_2 = (dur_2 > 0 && use_h3_2) ? sample3_2 : 16'sd0;
 
-    // Instrument-style harmonic blend:
-    // fundamental + 1/4*(2nd harmonic) + 1/8*(3rd harmonic)
+    // Per-voice harmonic mixes
     wire signed [17:0] voice_mix_0 = $signed(active_sample_0)
                                    + ($signed(active_sample2_0) >>> 2)
                                    + ($signed(active_sample3_0) >>> 3);
@@ -173,16 +180,23 @@ module note_player(
                                    + ($signed(active_sample2_2) >>> 2)
                                    + ($signed(active_sample3_2) >>> 3);
 
+    // Final summed mix
     wire signed [19:0] mixed_sum = $signed(voice_mix_0)
                                  + $signed(voice_mix_1)
                                  + $signed(voice_mix_2);
+
     assign sample_out = mixed_sum >>> 3;
+
+    // New display taps, scaled to the same vertical domain as the final sum
+    assign voice_wave_0 = $signed(voice_mix_0 >>> 3);
+    assign voice_wave_1 = $signed(voice_mix_1 >>> 3);
+    assign voice_wave_2 = $signed(voice_mix_2 >>> 3);
+    assign sum_wave     = sample_out;
 
     wire sample_valid_d1;
     dff sample_ready_ff1 (.clk(clk), .d(voice_generate_next), .q(sample_valid_d1));
     dff sample_ready_ff2 (.clk(clk), .d(sample_valid_d1), .q(new_sample_ready));
 
-    // Song timing is now command-driven (WAIT commands in song_reader).
     assign done_with_note = 1'b1;
 
 endmodule
