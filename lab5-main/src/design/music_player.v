@@ -15,7 +15,24 @@ module music_player(
     output wire [15:0] voice_wave_1,
     output wire [15:0] voice_wave_2,
     output wire [15:0] sum_wave,
-    output wire [15:0] envelope_vol_out // to pass to top PWM
+    output wire [15:0] envelope_vol_out, // to pass to top PWM
+
+    // Exposed note-display signals
+    output wire [5:0] current_note_0,
+    output wire [5:0] current_note_1,
+    output wire [5:0] current_note_2,
+    output wire       current_valid_0,
+    output wire       current_valid_1,
+    output wire       current_valid_2,
+    output wire       load_note_0,
+    output wire       load_note_1,
+    output wire       load_note_2,
+
+    output wire [5:0] event_note,
+    output wire [2:0] event_metadata,
+    output wire       event_new_note,
+    output wire [6:0] event_index,
+    output wire [1:0] current_song_out
 );
     parameter BEAT_COUNT = 1000;
 
@@ -52,7 +69,8 @@ module music_player(
         .note(note_to_play),
         .duration(duration_for_note),
         .note_metadata(note_metadata),
-        .new_note(new_note)
+        .new_note(new_note),
+        .event_index(event_index)
     );
 
     wire generate_next_sample, generate_next_sample0;
@@ -98,6 +116,17 @@ module music_player(
         .generate_next_sample(generate_next_sample),
         .sample_out(note_sample0),
         .new_sample_ready(note_sample_ready0),
+
+        .current_note_0(current_note_0),
+        .current_note_1(current_note_1),
+        .current_note_2(current_note_2),
+        .current_valid_0(current_valid_0),
+        .current_valid_1(current_valid_1),
+        .current_valid_2(current_valid_2),
+        .load_note_0(load_note_0),
+        .load_note_1(load_note_1),
+        .load_note_2(load_note_2),
+
         .voice_wave_0(voice_wave_0_0),
         .voice_wave_1(voice_wave_1_0),
         .voice_wave_2(voice_wave_2_0),
@@ -131,5 +160,11 @@ module music_player(
         .new_frame(new_frame),
         .valid_sample(sample_out0)
     );
+
+    // Passive display-facing exposures only
+    assign event_note       = note_to_play;
+    assign event_metadata   = note_metadata;
+    assign event_new_note   = new_note;
+    assign current_song_out = current_song;
 
 endmodule

@@ -24,7 +24,8 @@ module song_reader(
     output wire [5:0] note,
     output wire [5:0] duration,
     output wire [2:0] note_metadata,
-    output wire new_note
+    output wire new_note,
+    output wire [6:0] event_index
 );
     wire [`SONG_WIDTH-1:0] curr_note_num, next_note_num;
     wire [15:0] command_word;
@@ -94,5 +95,6 @@ module song_reader(
     assign duration = command_duration;
     assign note_metadata = command_metadata;
     assign song_done = overflow;
+    assign event_index = curr_note_num;
 
 endmodule

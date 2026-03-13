@@ -119,9 +119,27 @@ module lab5_top(
     wire [15:0] voice_wave_1;
     wire [15:0] voice_wave_2;
     wire [15:0] sum_wave;
-    
-    // PWM Envelope signal
-    wire [15:0] adsr_envelope;
+
+    // Note-context signals from music_player
+    wire [5:0] current_note_0, current_note_1, current_note_2;
+    wire       current_valid_0, current_valid_1, current_valid_2;
+    wire       load_note_0, load_note_1, load_note_2;
+
+    wire [5:0] event_note;
+    wire [2:0] event_metadata;
+    wire       event_new_note;
+    wire [6:0] event_index;
+    wire [1:0] current_song;
+
+    // Tracker outputs
+    wire [5:0] past_note_0, past_note_1, past_note_2;
+    wire       past_valid_0, past_valid_1, past_valid_2;
+
+    wire [5:0] now_note_0, now_note_1, now_note_2;
+    wire       now_valid_0, now_valid_1, now_valid_2;
+
+    wire [5:0] next_note_0, next_note_1, next_note_2;
+    wire       next_valid_0, next_valid_1, next_valid_2;
 
     music_player #(.BEAT_COUNT(BEAT_COUNT)) music_player(
         .clk(clk_100),
@@ -135,7 +153,22 @@ module lab5_top(
         .voice_wave_1(voice_wave_1),
         .voice_wave_2(voice_wave_2),
         .sum_wave(sum_wave),
-        .envelope_vol_out(adsr_envelope)
+
+        .current_note_0(current_note_0),
+        .current_note_1(current_note_1),
+        .current_note_2(current_note_2),
+        .current_valid_0(current_valid_0),
+        .current_valid_1(current_valid_1),
+        .current_valid_2(current_valid_2),
+        .load_note_0(load_note_0),
+        .load_note_1(load_note_1),
+        .load_note_2(load_note_2),
+
+        .event_note(event_note),
+        .event_metadata(event_metadata),
+        .event_new_note(event_new_note),
+        .event_index(event_index),
+        .current_song_out(current_song)
     );
 
     dff #(.WIDTH(17)) sample_reg (
@@ -145,30 +178,62 @@ module lab5_top(
     );
 
     // ------------------------------------------------------------
+    // Note context tracker
+    // ------------------------------------------------------------
+    note_context_tracker tracker (
+        .clk(clk_100),
+        .reset(reset),
+        .song_sel(current_song),
+
+        .curr_note_0(current_note_0),
+        .curr_note_1(current_note_1),
+        .curr_note_2(current_note_2),
+        .curr_valid_0(current_valid_0),
+        .curr_valid_1(current_valid_1),
+        .curr_valid_2(current_valid_2),
+
+        .load_note_0(load_note_0),
+        .load_note_1(load_note_1),
+        .load_note_2(load_note_2),
+
+        .event_new_note(event_new_note),
+        .event_note(event_note),
+        .event_metadata(event_metadata),
+        .event_index(event_index),
+
+        .past_note_0(past_note_0),
+        .past_note_1(past_note_1),
+        .past_note_2(past_note_2),
+        .past_valid_0(past_valid_0),
+        .past_valid_1(past_valid_1),
+        .past_valid_2(past_valid_2),
+
+        .now_note_0(now_note_0),
+        .now_note_1(now_note_1),
+        .now_note_2(now_note_2),
+        .now_valid_0(now_valid_0),
+        .now_valid_1(now_valid_1),
+        .now_valid_2(now_valid_2),
+
+        .next_note_0(next_note_0),
+        .next_note_1(next_note_1),
+        .next_note_2(next_note_2),
+        .next_valid_0(next_valid_0),
+        .next_valid_1(next_valid_1),
+        .next_valid_2(next_valid_2)
+    );
+
+    // ------------------------------------------------------------
     // Codec interface
     // ------------------------------------------------------------
     wire [23:0] hphone_r  = 24'd0;
     wire [23:0] line_in_l = 24'd0;
     wire [23:0] line_in_r = 24'd0;
 
-    // 1. PWM Counter (16-bit) to create the dimming effect
-    wire [15:0] pwm_cnt;
-    dffr #(.WIDTH(16)) led_pwm_counter (
-        .clk(clk_100),
-        .r(reset),
-        .d(pwm_cnt + 1'b1),
-        .q(pwm_cnt)
-    );
-    
-    // 2. The brightness driver
-    // This will be HIGH more often when the envelope is large (loud)
-    // and LOW more often when the envelope is small (quiet).
-    wire led_drive = (adsr_envelope > pwm_cnt);
-    
-    // 3. New Assignments
-    assign led        = {4{led_drive}}; // All 4 green LEDs pulse together
-    assign leds_rgb_0 = {3{led_drive}}; // RGB 0 glows white
-    assign leds_rgb_1 = {3{led_drive}}; // RGB 1 glows white
+    // LED debug from audio sample
+    assign leds_rgb_0 = codec_sample[15:13];
+    assign leds_rgb_1 = codec_sample[11:9];
+    assign led        = codec_sample[15:12];
 
     adau1761_codec adau1761_codec(
         .clk_100(clk_100),
@@ -231,6 +296,28 @@ module lab5_top(
         .x(x[10:0]),
         .y(y[9:0]),
         .valid(vde),
+
+        .past_note_0(past_note_0),
+        .past_note_1(past_note_1),
+        .past_note_2(past_note_2),
+        .past_valid_0(past_valid_0),
+        .past_valid_1(past_valid_1),
+        .past_valid_2(past_valid_2),
+
+        .now_note_0(now_note_0),
+        .now_note_1(now_note_1),
+        .now_note_2(now_note_2),
+        .now_valid_0(now_valid_0),
+        .now_valid_1(now_valid_1),
+        .now_valid_2(now_valid_2),
+
+        .next_note_0(next_note_0),
+        .next_note_1(next_note_1),
+        .next_note_2(next_note_2),
+        .next_valid_0(next_valid_0),
+        .next_valid_1(next_valid_1),
+        .next_valid_2(next_valid_2),
+
         .pixel_on(hud_pixel_on),
         .r(hud_r),
         .g(hud_g),

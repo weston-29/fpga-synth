@@ -12,6 +12,16 @@ module note_player(
     output [15:0] sample_out,  // Our sample output
     output new_sample_ready,  // Tells the codec when we've got a sample
 
+    output wire [5:0] current_note_0,
+    output wire [5:0] current_note_1,
+    output wire [5:0] current_note_2,
+    output wire       current_valid_0,
+    output wire       current_valid_1,
+    output wire       current_valid_2,
+    output wire       load_note_0,
+    output wire       load_note_1,
+    output wire       load_note_2,
+
     // Display-facing outputs
     output wire [15:0] voice_wave_0,
     output wire [15:0] voice_wave_1,
@@ -340,7 +350,7 @@ module note_player(
     dff sample_ready_ff2 (.clk(clk), .d(sample_valid_d1),     .q(new_sample_ready));
 
     assign done_with_note = 1'b1;
-    
+
     // Envelope PWM signal for passing up to top
     // Sum the gains of all 3 voices
     // Each is 16-bit, so the sum is 18-bit to prevent overflow.
@@ -349,5 +359,20 @@ module note_player(
     // Scale back to 16-bit for the PWM logic. 
     // If all 3 are at max (32767), the sum is 98301. Shifting >> 2 gives ~24575.
     assign total_env_vol = combined_gain[17:2];
+
+    // -----------------------------------------------------------------------
+    // Display-facing note context outputs
+    // -----------------------------------------------------------------------
+    assign current_note_0  = freq_in_0;
+    assign current_note_1  = freq_in_1;
+    assign current_note_2  = freq_in_2;
+
+    assign current_valid_0 = (dur_0 != 6'd0);
+    assign current_valid_1 = (dur_1 != 6'd0);
+    assign current_valid_2 = (dur_2 != 6'd0);
+
+    assign load_note_0 = load_v0;
+    assign load_note_1 = load_v1;
+    assign load_note_2 = load_v2;
 
 endmodule
