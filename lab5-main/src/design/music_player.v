@@ -14,7 +14,8 @@ module music_player(
     output wire [15:0] voice_wave_0,
     output wire [15:0] voice_wave_1,
     output wire [15:0] voice_wave_2,
-    output wire [15:0] sum_wave
+    output wire [15:0] sum_wave,
+    output wire [15:0] envelope_vol_out // to pass to top PWM
 );
     parameter BEAT_COUNT = 1000;
 
@@ -100,7 +101,8 @@ module music_player(
         .voice_wave_0(voice_wave_0_0),
         .voice_wave_1(voice_wave_1_0),
         .voice_wave_2(voice_wave_2_0),
-        .sum_wave(sum_wave_0)
+        .sum_wave(sum_wave_0),
+        .total_env_vol(envelope_vol_out)
     );
 
     beat_generator #(.WIDTH(10), .STOP(BEAT_COUNT)) beat_generator(
