@@ -16,7 +16,8 @@ module note_player(
     output wire [15:0] voice_wave_0,
     output wire [15:0] voice_wave_1,
     output wire [15:0] voice_wave_2,
-    output wire [15:0] sum_wave
+    output wire [15:0] sum_wave,
+    output wire [15:0] total_env_vol // to be passed up to PWM
 );
 
     // -----------------------------------------------------------------------
@@ -339,5 +340,14 @@ module note_player(
     dff sample_ready_ff2 (.clk(clk), .d(sample_valid_d1),     .q(new_sample_ready));
 
     assign done_with_note = 1'b1;
+    
+    // Envelope PWM signal for passing up to top
+    // Sum the gains of all 3 voices
+    // Each is 16-bit, so the sum is 18-bit to prevent overflow.
+    wire [17:0] combined_gain = {2'b0, env_gain_0} + {2'b0, env_gain_1} + {2'b0, env_gain_2};
+
+    // Scale back to 16-bit for the PWM logic. 
+    // If all 3 are at max (32767), the sum is 98301. Shifting >> 2 gives ~24575.
+    assign total_env_vol = combined_gain[17:2];
 
 endmodule
