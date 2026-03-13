@@ -119,6 +119,9 @@ module lab5_top(
     wire [15:0] voice_wave_1;
     wire [15:0] voice_wave_2;
     wire [15:0] sum_wave;
+    
+    // PWM Envelope signal
+    wire [15:0] adsr_envelope;
 
     music_player #(.BEAT_COUNT(BEAT_COUNT)) music_player(
         .clk(clk_100),
@@ -131,7 +134,8 @@ module lab5_top(
         .voice_wave_0(voice_wave_0),
         .voice_wave_1(voice_wave_1),
         .voice_wave_2(voice_wave_2),
-        .sum_wave(sum_wave)
+        .sum_wave(sum_wave),
+        .envelope_vol_out(adsr_envelope)
     );
 
     dff #(.WIDTH(17)) sample_reg (
@@ -147,10 +151,24 @@ module lab5_top(
     wire [23:0] line_in_l = 24'd0;
     wire [23:0] line_in_r = 24'd0;
 
-    // LED debug from audio sample
-    assign leds_rgb_0 = codec_sample[15:13];
-    assign leds_rgb_1 = codec_sample[11:9];
-    assign led        = codec_sample[15:12];
+    // 1. PWM Counter (16-bit) to create the dimming effect
+    wire [15:0] pwm_cnt;
+    dffr #(.WIDTH(16)) led_pwm_counter (
+        .clk(clk_100),
+        .r(reset),
+        .d(pwm_cnt + 1'b1),
+        .q(pwm_cnt)
+    );
+    
+    // 2. The brightness driver
+    // This will be HIGH more often when the envelope is large (loud)
+    // and LOW more often when the envelope is small (quiet).
+    wire led_drive = (adsr_envelope > pwm_cnt);
+    
+    // 3. New Assignments
+    assign led        = {4{led_drive}}; // All 4 green LEDs pulse together
+    assign leds_rgb_0 = {3{led_drive}}; // RGB 0 glows white
+    assign leds_rgb_1 = {3{led_drive}}; // RGB 1 glows white
 
     adau1761_codec adau1761_codec(
         .clk_100(clk_100),
