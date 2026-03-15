@@ -6,6 +6,7 @@ module music_player(
     input next_button,
 
     input new_frame,
+    input fast_forward,
 
     output wire new_sample_generated,
     output wire [15:0] sample_out,
@@ -134,10 +135,15 @@ module music_player(
         .total_env_vol(envelope_vol_out)
     );
 
-    beat_generator #(.WIDTH(10), .STOP(BEAT_COUNT)) beat_generator(
+    playback_beat_generator #(
+        .WIDTH(10),
+        .NORMAL_STOP(BEAT_COUNT),
+        .FAST_STOP(BEAT_COUNT/2)
+    ) playback_beat_generator (
         .clk(clk),
         .reset(reset | reset_player),
         .en(generate_next_sample),
+        .fast_forward(fast_forward),
         .beat(beat)
     );
 

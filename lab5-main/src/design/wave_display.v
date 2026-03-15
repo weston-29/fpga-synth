@@ -55,12 +55,39 @@ module wave_display (
         .q(prev_sample)
     );
 
-    wire [7:0] upper_bound = (cur_sample > prev_sample) ? cur_sample : prev_sample;
-    wire [7:0] lower_bound = (cur_sample < prev_sample) ? cur_sample : prev_sample;
+    // Combinational bounds from the two stored samples
+    wire [7:0] upper_bound_comb = (cur_sample > prev_sample) ? cur_sample : prev_sample;
+    wire [7:0] lower_bound_comb = (cur_sample < prev_sample) ? cur_sample : prev_sample;
 
-    assign valid_pixel = in_bounds &&
-                         (y_val >= lower_bound) &&
-                         (y_val <= upper_bound);
+    // Pipeline the expensive compare path by one stage
+    wire [7:0] upper_bound;
+    wire [7:0] lower_bound;
+    wire [7:0] y_val_d;
+    wire       in_bounds_d;
+
+    dffr #(8) upper_bound_reg (
+        .clk(clk), .r(reset),
+        .d(upper_bound_comb), .q(upper_bound)
+    );
+
+    dffr #(8) lower_bound_reg (
+        .clk(clk), .r(reset),
+        .d(lower_bound_comb), .q(lower_bound)
+    );
+
+    dffr #(8) y_val_reg (
+        .clk(clk), .r(reset),
+        .d(y_val), .q(y_val_d)
+    );
+
+    dffr #(1) in_bounds_reg (
+        .clk(clk), .r(reset),
+        .d(in_bounds), .q(in_bounds_d)
+    );
+
+    assign valid_pixel = in_bounds_d &&
+                         (y_val_d >= lower_bound) &&
+                         (y_val_d <= upper_bound);
 
     assign r = valid_pixel ? color_r : 8'h00;
     assign g = valid_pixel ? color_g : 8'h00;

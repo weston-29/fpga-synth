@@ -10,8 +10,8 @@ create_clock -add -name sys_clk_pin -period 8.00 -waveform {0 4} [get_ports { sy
 
 ##Switches
 
-#set_property -dict { PACKAGE_PIN M20   IOSTANDARD LVCMOS33 } [get_ports { sw[0] }]; #IO_L7N_T1_AD2N_35 Sch=sw[0]
-#set_property -dict { PACKAGE_PIN M19   IOSTANDARD LVCMOS33 } [get_ports { sw[1] }]; #IO_L7P_T1_AD2P_35 Sch=sw[1]
+set_property -dict { PACKAGE_PIN M20   IOSTANDARD LVCMOS33 } [get_ports { sw[0] }]; #IO_L7N_T1_AD2N_35 Sch=sw[0]
+set_property -dict { PACKAGE_PIN M19   IOSTANDARD LVCMOS33 } [get_ports { sw[1] }]; #IO_L7P_T1_AD2P_35 Sch=sw[1]
 
 ##RGB LEDs
 
@@ -217,10 +217,10 @@ set_property -dict {PACKAGE_PIN J18 IOSTANDARD TMDS_33} [get_ports {TMDS_Data_p[
 # create_clock -add -name clk12_pin -period 83.333 -waveform {0 41.667} [get_ports clk12]
  
 ## Switches maps to SWA (sw[0]) to SWH (sw[7])
-# set_property PACKAGE_PIN V6 [get_ports {sw[0]}];	#RPIO_14_R, connector Pin 8, FPGA Signal name RP_IO02				
-# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[0]}]
-# set_property PACKAGE_PIN Y6 [get_ports {sw[1]}];	#RPIO_15_R, connector Pin 10, FPGA Signal name RP_IO10					
-# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[1]}]
+#set_property PACKAGE_PIN V6 [get_ports {sw[0]}];
+#set_property IOSTANDARD LVCMOS33 [get_ports {sw[0]}]
+#set_property PACKAGE_PIN Y6 [get_ports {sw[1]}];
+#set_property IOSTANDARD LVCMOS33 [get_ports {sw[1]}]
 # set_property PACKAGE_PIN B19 [get_ports {sw[2]}];	#RPIO_16_R, connector Pin 36, FPGA Signal name RP_IO20					
 # 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[2]}]
 # set_property PACKAGE_PIN U7 [get_ports {sw[3]}];	#RPIO_17_R, connector Pin 11, FPGA Signal name RP_IO03					

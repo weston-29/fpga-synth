@@ -32,6 +32,9 @@ module lab5_top(
     // Buttons
     input [2:0] btn,
 
+    // Switches
+    input [1:0] sw,
+
     // HDMI output
     output TMDS_Clk_p,
     output TMDS_Clk_n,
@@ -46,7 +49,10 @@ module lab5_top(
     // btn[0] = transport
     // ------------------------------------------------------------
     wire reset, play_button, next_button;
+    wire fast_forward_mode, reverse_mode;
     assign {reset, play_button, next_button} = btn;
+    assign fast_forward_mode = sw[0];
+    assign reverse_mode      = sw[1]; // reserved for reverse playback work
 
     // ------------------------------------------------------------
     // Clock generation
@@ -147,6 +153,7 @@ module lab5_top(
         .play_button(play),
         .next_button(next),
         .new_frame(new_frame),
+        .fast_forward(fast_forward_mode),
         .sample_out(codec_sample),
         .new_sample_generated(new_sample),
         .voice_wave_0(voice_wave_0),
@@ -233,7 +240,9 @@ module lab5_top(
     // LED debug from audio sample
     assign leds_rgb_0 = codec_sample[15:13];
     assign leds_rgb_1 = codec_sample[11:9];
-    assign led        = codec_sample[15:12];
+    assign led[3]     = reverse_mode;
+    assign led[2]     = fast_forward_mode;
+    assign led[1:0]   = codec_sample[15:14];
 
     adau1761_codec adau1761_codec(
         .clk_100(clk_100),
@@ -290,55 +299,20 @@ module lab5_top(
     );
 
     // ------------------------------------------------------------
-    // HUD overlay
+    // HUD overlay DISABLED FOR DEBUG
     // ------------------------------------------------------------
-    hud hud_overlay (
-        .x(x[10:0]),
-        .y(y[9:0]),
-        .valid(vde),
-
-        .past_note_0(past_note_0),
-        .past_note_1(past_note_1),
-        .past_note_2(past_note_2),
-        .past_valid_0(past_valid_0),
-        .past_valid_1(past_valid_1),
-        .past_valid_2(past_valid_2),
-
-        .now_note_0(now_note_0),
-        .now_note_1(now_note_1),
-        .now_note_2(now_note_2),
-        .now_valid_0(now_valid_0),
-        .now_valid_1(now_valid_1),
-        .now_valid_2(now_valid_2),
-
-        .next_note_0(next_note_0),
-        .next_note_1(next_note_1),
-        .next_note_2(next_note_2),
-        .next_valid_0(next_valid_0),
-        .next_valid_1(next_valid_1),
-        .next_valid_2(next_valid_2),
-
-        .pixel_on(hud_pixel_on),
-        .r(hud_r),
-        .g(hud_g),
-        .b(hud_b)
-    );
+    assign hud_pixel_on = 1'b0;
+    assign hud_r = 8'h00;
+    assign hud_g = 8'h00;
+    assign hud_b = 8'h00;
 
     // ------------------------------------------------------------
     // Final layer compositor
-    // HUD has priority over waveform
+    // HUD disabled, waveform only
     // ------------------------------------------------------------
-    assign final_r = hud_pixel_on  ? hud_r  :
-                     wave_pixel_on ? wave_r :
-                     8'h00;
-
-    assign final_g = hud_pixel_on  ? hud_g  :
-                     wave_pixel_on ? wave_g :
-                     8'h00;
-
-    assign final_b = hud_pixel_on  ? hud_b  :
-                     wave_pixel_on ? wave_b :
-                     8'h00;
+    assign final_r = wave_pixel_on ? wave_r : 8'h00;
+    assign final_g = wave_pixel_on ? wave_g : 8'h00;
+    assign final_b = wave_pixel_on ? wave_b : 8'h00;
 
     // ------------------------------------------------------------
     // Pack RGB for HDMI
