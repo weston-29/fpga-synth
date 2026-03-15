@@ -105,7 +105,7 @@ module music_player(
 
     note_player note_player(
         .clk(clk),
-        .reset(reset),
+        .reset(reset | reset_player),
         .play_enable(play),
         .note_to_load(note_to_play),
         .duration_to_load(duration_for_note),
@@ -136,7 +136,7 @@ module music_player(
 
     beat_generator #(.WIDTH(10), .STOP(BEAT_COUNT)) beat_generator(
         .clk(clk),
-        .reset(reset),
+        .reset(reset | reset_player),
         .en(generate_next_sample),
         .beat(beat)
     );

@@ -40,9 +40,17 @@ module hud (
     wire [31:0] now_ascii_0,  now_ascii_1,  now_ascii_2;
     wire [31:0] next_ascii_0, next_ascii_1, next_ascii_2;
 
-    note_code_to_ascii p0 (.note_valid(past_valid_0), .note_code(past_note_0), .text_ascii(past_ascii_0));
-    note_code_to_ascii p1 (.note_valid(past_valid_1), .note_code(past_note_1), .text_ascii(past_ascii_1));
-    note_code_to_ascii p2 (.note_valid(past_valid_2), .note_code(past_note_2), .text_ascii(past_ascii_2));
+    // Display-side fix:
+    // Show past note if tracker marks it valid OR if a nonzero note code
+    // is already stored in the past slot.
+    wire past_disp_valid_0, past_disp_valid_1, past_disp_valid_2;
+    assign past_disp_valid_0 = past_valid_0 | (past_note_0 != 6'd0);
+    assign past_disp_valid_1 = past_valid_1 | (past_note_1 != 6'd0);
+    assign past_disp_valid_2 = past_valid_2 | (past_note_2 != 6'd0);
+
+    note_code_to_ascii p0 (.note_valid(past_disp_valid_0), .note_code(past_note_0), .text_ascii(past_ascii_0));
+    note_code_to_ascii p1 (.note_valid(past_disp_valid_1), .note_code(past_note_1), .text_ascii(past_ascii_1));
+    note_code_to_ascii p2 (.note_valid(past_disp_valid_2), .note_code(past_note_2), .text_ascii(past_ascii_2));
 
     note_code_to_ascii n0 (.note_valid(now_valid_0),  .note_code(now_note_0),  .text_ascii(now_ascii_0));
     note_code_to_ascii n1 (.note_valid(now_valid_1),  .note_code(now_note_1),  .text_ascii(now_ascii_1));
@@ -75,8 +83,8 @@ module hud (
         .pixel_y(y),
         .origin_x(LABEL_X),
         .origin_y(PAST_Y),
-        .scale_sel(2'b01),               // 2x
-        .text_ascii({8'h50,8'h41,8'h53,8'h54}), // PAST
+        .scale_sel(2'b01),
+        .text_ascii({8'h50,8'h41,8'h53,8'h54}),
         .text_rgb(12'hFFF),
         .enable(valid),
         .pixel_on(lbl_past_on),
@@ -88,8 +96,8 @@ module hud (
         .pixel_y(y),
         .origin_x(LABEL_X),
         .origin_y(NOW_Y),
-        .scale_sel(2'b01),               // 2x
-        .text_ascii({8'h4E,8'h4F,8'h57}), // NOW
+        .scale_sel(2'b01),
+        .text_ascii({8'h4E,8'h4F,8'h57}),
         .text_rgb(12'hFFF),
         .enable(valid),
         .pixel_on(lbl_now_on),
@@ -101,22 +109,17 @@ module hud (
         .pixel_y(y),
         .origin_x(LABEL_X),
         .origin_y(NEXT_Y),
-        .scale_sel(2'b01),               // 2x
-        .text_ascii({8'h4E,8'h45,8'h58,8'h54}), // NEXT
+        .scale_sel(2'b01),
+        .text_ascii({8'h4E,8'h45,8'h58,8'h54}),
         .text_rgb(12'hFFF),
         .enable(valid),
         .pixel_on(lbl_next_on),
         .pixel_rgb(lbl_next_rgb)
     );
 
-    // ------------------------------------------------------------
-    // Note renderers
-    // Past/future are 1x; current is 2x
-    // ------------------------------------------------------------
     wire [8:0]  note_on;
     wire [11:0] note_rgb [0:8];
 
-    // Past row
     text_renderer #(.TEXT_LEN(4)) past_v0 (
         .pixel_x(x), .pixel_y(y),
         .origin_x(V0_X), .origin_y(PAST_Y + 10'd4),
@@ -150,7 +153,6 @@ module hud (
         .pixel_rgb(note_rgb[2])
     );
 
-    // Current row
     text_renderer #(.TEXT_LEN(4)) now_v0 (
         .pixel_x(x), .pixel_y(y),
         .origin_x(V0_X), .origin_y(NOW_Y),
@@ -184,7 +186,6 @@ module hud (
         .pixel_rgb(note_rgb[5])
     );
 
-    // Future row
     text_renderer #(.TEXT_LEN(4)) next_v0 (
         .pixel_x(x), .pixel_y(y),
         .origin_x(V0_X), .origin_y(NEXT_Y + 10'd4),
@@ -218,9 +219,6 @@ module hud (
         .pixel_rgb(note_rgb[8])
     );
 
-    // ------------------------------------------------------------
-    // Composite
-    // ------------------------------------------------------------
     wire [11:0] hud_rgb =
         lbl_now_on  ? lbl_now_rgb  :
         lbl_past_on ? lbl_past_rgb :
