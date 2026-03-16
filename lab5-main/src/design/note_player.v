@@ -18,7 +18,7 @@ module note_player(
 
     output wire [15:0] voice_wave_0, voice_wave_1, voice_wave_2,
     output wire [15:0] sum_wave,
-    output wire [15:0] total_env_vol 
+    output wire [15:0] total_env_vol // to be passed up to PWM
 );
 
     wire [1:0] requested_voice = note_metadata[1:0];
@@ -318,7 +318,7 @@ module note_player(
     dff sample_ready_ff2 (.clk(clk), .d(s_valid_d1), .q(s_valid_d2));
     dff sample_ready_ff3 (.clk(clk), .d(s_valid_d2), .q(new_sample_ready));
 
-    assign total_env_vol = ({2'b0, env_gain_0} + {2'b0, env_gain_1} + {2'b0, env_gain_2}) >> 2;
+    assign total_env_vol = ({2'b0, env_gain_0} + {2'b0, env_gain_1} + {2'b0, env_gain_2}) >> 2; // Shifting 2 gets back 16-bit signal for PWM
     assign done_with_note = 1'b1;
     assign current_valid_0 = (dur_0 != 6'd0);
 

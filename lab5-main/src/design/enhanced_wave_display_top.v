@@ -2,6 +2,7 @@ module enhanced_wave_display_top(
     input clk,
     input reset,
     input new_sample,
+    input scaling_button, // New input
 
     input [15:0] sum_sample,
     input [15:0] voice0_sample,
@@ -19,6 +20,54 @@ module enhanced_wave_display_top(
     output wire [7:0] b
 );
 
+    // -------------------------------------------------------------------------
+    // 1. ZOOM STATE MACHINE (Cycles 0 -> 1 -> 2 -> 0)
+    // -------------------------------------------------------------------------
+    wire [1:0] zoom_mode;
+    wire [1:0] next_zoom = (zoom_mode == 2'd2) ? 2'd0 : (zoom_mode + 1'b1);
+
+    dffre #(.WIDTH(2)) zoom_reg (
+        .clk(clk),
+        .r(reset),
+        .en(scaling_button),
+        .d(next_zoom),
+        .q(zoom_mode)
+    );
+
+    // -------------------------------------------------------------------------
+    // 2. SCALING FUNCTION (Write-Side)
+    // -------------------------------------------------------------------------
+    // Mode 0: 1x (Window [14:8])
+    // Mode 1: 2x (Window [13:7])
+    // Mode 2: 4x (Window [12:6]) - Usually better for shifts than 3x
+    function [7:0] scale_sample;
+        input [15:0] sample;
+        input [1:0]  mode;
+        begin
+            case (mode)
+                2'd1: begin // 2x Zoom
+                    if (~sample[15] && sample[14])           scale_sample = 8'hFF; // Saturation
+                    else if (sample[15] && !sample[14])      scale_sample = 8'h00; 
+                    else scale_sample = {~sample[15], sample[13:7]};
+                end
+                2'd2: begin // 4x Zoom
+                    if (~sample[15] && |sample[14:13])       scale_sample = 8'hFF;
+                    else if (sample[15] && !(&sample[14:13])) scale_sample = 8'h00;
+                    else scale_sample = {~sample[15], sample[12:6]};
+                end
+                default: begin // 1x Zoom
+                    scale_sample = {~sample[15], sample[14:8]};
+                end
+            endcase
+        end
+    endfunction
+
+    // Apply scaling to data BEFORE it is written to RAM
+    wire [7:0] write_sum = scale_sample(sum_sample,    zoom_mode);
+    wire [7:0] write_v0  = scale_sample(voice0_sample, zoom_mode);
+    wire [7:0] write_v1  = scale_sample(voice1_sample, zoom_mode);
+    wire [7:0] write_v2  = scale_sample(voice2_sample, zoom_mode);
+
     wire wave_display_idle = ~vsync;
 
     wire [8:0] write_address;
@@ -35,13 +84,7 @@ module enhanced_wave_display_top(
         .write_enable(write_enable),
         .read_index(read_index)
     );
-
-    // Same signed->unsigned packing used by original wave_capture
-    wire [7:0] write_sum   = {~sum_sample[15],    sum_sample[14:8]};
-    wire [7:0] write_v0    = {~voice0_sample[15], voice0_sample[14:8]};
-    wire [7:0] write_v1    = {~voice1_sample[15], voice1_sample[14:8]};
-    wire [7:0] write_v2    = {~voice2_sample[15], voice2_sample[14:8]};
-
+    
     wire [7:0] read_sum;
     wire [7:0] read_v0;
     wire [7:0] read_v1;
@@ -52,48 +95,33 @@ module enhanced_wave_display_top(
     wire [8:0] read_address_v1;
     wire [8:0] read_address_v2;
 
+    // RAM Instantiations (Ping-Pong Buffers)
+    // sum_ram
     ram_1w2r #(.WIDTH(8), .DEPTH(9)) sum_ram(
-        .clka(clk),
-        .clkb(clk),
-        .wea(write_enable),
-        .addra(write_address),
-        .dina(write_sum),
-        .douta(),
-        .addrb(read_address_sum),
-        .doutb(read_sum)
+        .clka(clk), .wea(write_enable), .addra(write_address), .dina(write_sum),
+        .clkb(clk), .addrb({read_index, read_address_sum[7:0]}), .doutb(read_sum),
+        .douta() 
     );
-
+    
+    // v0_ram dina connection
     ram_1w2r #(.WIDTH(8), .DEPTH(9)) voice0_ram(
-        .clka(clk),
-        .clkb(clk),
-        .wea(write_enable),
-        .addra(write_address),
-        .dina(write_v0),
-        .douta(),
-        .addrb(read_address_v0),
-        .doutb(read_v0)
+        .clka(clk), .wea(write_enable), .addra(write_address), .dina(write_v0),
+        .clkb(clk), .addrb({read_index, read_address_v0[7:0]}), .doutb(read_v0),
+        .douta()
     );
-
+    
+    // v1_ram dina connection
     ram_1w2r #(.WIDTH(8), .DEPTH(9)) voice1_ram(
-        .clka(clk),
-        .clkb(clk),
-        .wea(write_enable),
-        .addra(write_address),
-        .dina(write_v1),
-        .douta(),
-        .addrb(read_address_v1),
-        .doutb(read_v1)
+        .clka(clk), .wea(write_enable), .addra(write_address), .dina(write_v1),
+        .clkb(clk), .addrb({read_index, read_address_v1[7:0]}), .doutb(read_v1),
+        .douta()
     );
-
+    
+    // v2_ram dina connection
     ram_1w2r #(.WIDTH(8), .DEPTH(9)) voice2_ram(
-        .clka(clk),
-        .clkb(clk),
-        .wea(write_enable),
-        .addra(write_address),
-        .dina(write_v2),
-        .douta(),
-        .addrb(read_address_v2),
-        .doutb(read_v2)
+        .clka(clk), .wea(write_enable), .addra(write_address), .dina(write_v2),
+        .clkb(clk), .addrb({read_index, read_address_v2[7:0]}), .doutb(read_v2),
+        .douta()
     );
 
     wire sum_on, v0_on, v1_on, v2_on;

@@ -30,7 +30,7 @@ module lab5_top(
     output wire [2:0] leds_rgb_1,
 
     // Buttons
-    input [2:0] btn,
+    input [3:0] btn, // third button for Amplitude Scaling
 
     // Switches
     input [1:0] sw,
@@ -48,9 +48,9 @@ module lab5_top(
     // btn[1] = play/pause
     // btn[0] = transport
     // ------------------------------------------------------------
-    wire reset, play_button, next_button;
+    wire reset, play_button, next_button, scaling_button_raw;
     wire fast_forward_mode, reverse_mode;
-    assign {reset, play_button, next_button} = btn;
+    assign {scaling_button_raw, reset, play_button, next_button} = btn;
     assign fast_forward_mode = sw[0];
     assign reverse_mode      = sw[1]; // reserved for reverse playback work
 
@@ -110,6 +110,14 @@ module lab5_top(
         .in(next_button),
         .out(next)
     );
+    
+    wire scaling_pulse; // Amplitude Scaling
+    button_press_unit #(.WIDTH(BPU_WIDTH)) scaling_bpu (
+        .clk(clk_100),
+        .reset(reset),
+        .in(scaling_button_raw),
+        .out(scaling_pulse)
+    );
 
     // ------------------------------------------------------------
     // Music player signals
@@ -125,6 +133,8 @@ module lab5_top(
     wire [15:0] voice_wave_1;
     wire [15:0] voice_wave_2;
     wire [15:0] sum_wave;
+    
+    wire [15:0] adsr_envelope;
 
     // Note-context signals from music_player
     wire [5:0] current_note_0, current_note_1, current_note_2;
@@ -160,6 +170,7 @@ module lab5_top(
         .voice_wave_1(voice_wave_1),
         .voice_wave_2(voice_wave_2),
         .sum_wave(sum_wave),
+        .envelope_vol_out(adsr_envelope), // for PWM
 
         .current_note_0(current_note_0),
         .current_note_1(current_note_1),
@@ -237,12 +248,24 @@ module lab5_top(
     wire [23:0] line_in_l = 24'd0;
     wire [23:0] line_in_r = 24'd0;
 
-    // LED debug from audio sample
-    assign leds_rgb_0 = codec_sample[15:13];
-    assign leds_rgb_1 = codec_sample[11:9];
-    assign led[3]     = reverse_mode;
-    assign led[2]     = fast_forward_mode;
-    assign led[1:0]   = codec_sample[15:14];
+     // 1. PWM Counter (16-bit) to create the dimming effect
+    wire [15:0] pwm_cnt;
+    dffr #(.WIDTH(16)) led_pwm_counter (
+        .clk(clk_100),
+        .r(reset),
+        .d(pwm_cnt + 1'b1),
+        .q(pwm_cnt)
+    );
+    
+    // 2. The brightness driver
+    // This will be HIGH more often when the envelope is large (loud)
+    // and LOW more often when the envelope is small (quiet).
+    wire led_drive = (adsr_envelope > pwm_cnt);
+    
+    // 3. New Assignments
+    assign led        = {4{led_drive}}; // All 4 green LEDs pulse together
+    assign leds_rgb_0 = {3{led_drive}}; // RGB 0 glows white
+    assign leds_rgb_1 = {3{led_drive}}; // RGB 1 glows white
 
     adau1761_codec adau1761_codec(
         .clk_100(clk_100),
@@ -284,6 +307,7 @@ module lab5_top(
         .clk(clk_100),
         .reset(reset),
         .new_sample(new_sample),
+        .scaling_button(scaling_pulse),
         .sum_sample(sum_wave),
         .voice0_sample(voice_wave_0),
         .voice1_sample(voice_wave_1),
