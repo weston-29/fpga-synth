@@ -30,7 +30,7 @@ module lab5_top(
     output wire [2:0] leds_rgb_1,
 
     // Buttons
-    input [3:0] btn, // third button for Amplitude Scaling
+    input [2:0] btn,
 
     // Switches
     input [1:0] sw,
@@ -46,13 +46,21 @@ module lab5_top(
     // Button mapping
     // btn[2] = reset
     // btn[1] = play/pause
-    // btn[0] = transport
+    // btn[0] = next
+    //
+    // Switch mapping
+    // sw[0] = fast forward
+    // sw[1] = rewind current song to beginning (edge-triggered)
     // ------------------------------------------------------------
-    wire reset, play_button, next_button, scaling_button_raw;
-    wire fast_forward_mode, reverse_mode;
-    assign {scaling_button_raw, reset, play_button, next_button} = btn;
+    wire reset, play_button, next_button;
+    assign {reset, play_button, next_button} = btn;
+
+    wire fast_forward_mode;
+    wire rewind_switch;
+    wire rewind_pulse;
+
     assign fast_forward_mode = sw[0];
-    assign reverse_mode      = sw[1]; // reserved for reverse playback work
+    assign rewind_switch     = sw[1];
 
     // ------------------------------------------------------------
     // Clock generation
@@ -110,13 +118,16 @@ module lab5_top(
         .in(next_button),
         .out(next)
     );
-    
-    wire scaling_pulse; // Amplitude Scaling
-    button_press_unit #(.WIDTH(BPU_WIDTH)) scaling_bpu (
+
+    // ------------------------------------------------------------
+    // Edge detector for rewind switch
+    // Generates a 1-cycle pulse on sw[1] rising edge
+    // ------------------------------------------------------------
+    rewind_edge_detector rewind_detector(
         .clk(clk_100),
         .reset(reset),
-        .in(scaling_button_raw),
-        .out(scaling_pulse)
+        .sw(rewind_switch),
+        .pulse(rewind_pulse)
     );
 
     // ------------------------------------------------------------
@@ -133,8 +144,6 @@ module lab5_top(
     wire [15:0] voice_wave_1;
     wire [15:0] voice_wave_2;
     wire [15:0] sum_wave;
-    
-    wire [15:0] adsr_envelope;
 
     // Note-context signals from music_player
     wire [5:0] current_note_0, current_note_1, current_note_2;
@@ -164,13 +173,13 @@ module lab5_top(
         .next_button(next),
         .new_frame(new_frame),
         .fast_forward(fast_forward_mode),
+        .rewind(rewind_pulse),
         .sample_out(codec_sample),
         .new_sample_generated(new_sample),
         .voice_wave_0(voice_wave_0),
         .voice_wave_1(voice_wave_1),
         .voice_wave_2(voice_wave_2),
         .sum_wave(sum_wave),
-        .envelope_vol_out(adsr_envelope), // for PWM
 
         .current_note_0(current_note_0),
         .current_note_1(current_note_1),
@@ -248,24 +257,10 @@ module lab5_top(
     wire [23:0] line_in_l = 24'd0;
     wire [23:0] line_in_r = 24'd0;
 
-     // 1. PWM Counter (16-bit) to create the dimming effect
-    wire [15:0] pwm_cnt;
-    dffr #(.WIDTH(16)) led_pwm_counter (
-        .clk(clk_100),
-        .r(reset),
-        .d(pwm_cnt + 1'b1),
-        .q(pwm_cnt)
-    );
-    
-    // 2. The brightness driver
-    // This will be HIGH more often when the envelope is large (loud)
-    // and LOW more often when the envelope is small (quiet).
-    wire led_drive = (adsr_envelope > pwm_cnt);
-    
-    // 3. New Assignments
-    assign led        = {4{led_drive}}; // All 4 green LEDs pulse together
-    assign leds_rgb_0 = {3{led_drive}}; // RGB 0 glows white
-    assign leds_rgb_1 = {3{led_drive}}; // RGB 1 glows white
+    // LED debug from audio sample
+    assign leds_rgb_0 = codec_sample[15:13];
+    assign leds_rgb_1 = codec_sample[11:9];
+    assign led        = codec_sample[15:12];
 
     adau1761_codec adau1761_codec(
         .clk_100(clk_100),
@@ -307,7 +302,6 @@ module lab5_top(
         .clk(clk_100),
         .reset(reset),
         .new_sample(new_sample),
-        .scaling_button(scaling_pulse),
         .sum_sample(sum_wave),
         .voice0_sample(voice_wave_0),
         .voice1_sample(voice_wave_1),
@@ -323,20 +317,55 @@ module lab5_top(
     );
 
     // ------------------------------------------------------------
-    // HUD overlay DISABLED FOR DEBUG
+    // HUD overlay
     // ------------------------------------------------------------
-    assign hud_pixel_on = 1'b0;
-    assign hud_r = 8'h00;
-    assign hud_g = 8'h00;
-    assign hud_b = 8'h00;
+    hud hud_overlay (
+        .x(x[10:0]),
+        .y(y[9:0]),
+        .valid(vde),
+
+        .past_note_0(past_note_0),
+        .past_note_1(past_note_1),
+        .past_note_2(past_note_2),
+        .past_valid_0(past_valid_0),
+        .past_valid_1(past_valid_1),
+        .past_valid_2(past_valid_2),
+
+        .now_note_0(now_note_0),
+        .now_note_1(now_note_1),
+        .now_note_2(now_note_2),
+        .now_valid_0(now_valid_0),
+        .now_valid_1(now_valid_1),
+        .now_valid_2(now_valid_2),
+
+        .next_note_0(next_note_0),
+        .next_note_1(next_note_1),
+        .next_note_2(next_note_2),
+        .next_valid_0(next_valid_0),
+        .next_valid_1(next_valid_1),
+        .next_valid_2(next_valid_2),
+
+        .pixel_on(hud_pixel_on),
+        .r(hud_r),
+        .g(hud_g),
+        .b(hud_b)
+    );
 
     // ------------------------------------------------------------
     // Final layer compositor
-    // HUD disabled, waveform only
+    // HUD has priority over waveform
     // ------------------------------------------------------------
-    assign final_r = wave_pixel_on ? wave_r : 8'h00;
-    assign final_g = wave_pixel_on ? wave_g : 8'h00;
-    assign final_b = wave_pixel_on ? wave_b : 8'h00;
+    assign final_r = hud_pixel_on  ? hud_r  :
+                     wave_pixel_on ? wave_r :
+                     8'h00;
+
+    assign final_g = hud_pixel_on  ? hud_g  :
+                     wave_pixel_on ? wave_g :
+                     8'h00;
+
+    assign final_b = hud_pixel_on  ? hud_b  :
+                     wave_pixel_on ? wave_b :
+                     8'h00;
 
     // ------------------------------------------------------------
     // Pack RGB for HDMI

@@ -7,6 +7,7 @@ module music_player(
 
     input new_frame,
     input fast_forward,
+    input rewind,
 
     output wire new_sample_generated,
     output wire [15:0] sample_out,
@@ -42,6 +43,10 @@ module music_player(
     wire [1:0] current_song;
     wire song_done;
 
+    // Rewind should restart the current song without changing song selection.
+    wire transport_reset;
+    assign transport_reset = reset | reset_player | rewind;
+
     mcu mcu(
         .clk(clk),
         .reset(reset),
@@ -62,7 +67,7 @@ module music_player(
 
     song_reader song_reader(
         .clk(clk),
-        .reset(reset | reset_player),
+        .reset(transport_reset),
         .play(play),
         .song(current_song),
         .beat(beat),
@@ -82,31 +87,36 @@ module music_player(
     wire [15:0] voice_wave_0_0, voice_wave_1_0, voice_wave_2_0, sum_wave_0;
 
     dffr pipeline_ff_gen_next_sample (
-        .clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample)
+        .clk(clk), .r(transport_reset), .d(generate_next_sample0), .q(generate_next_sample)
     );
+
     dffr #(.WIDTH(16)) pipeline_ff_note_sample (
-        .clk(clk), .r(reset), .d(note_sample0), .q(note_sample)
+        .clk(clk), .r(transport_reset), .d(note_sample0), .q(note_sample)
     );
+
     dffr pipeline_ff_new_sample_ready (
-        .clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready)
+        .clk(clk), .r(transport_reset), .d(note_sample_ready0), .q(note_sample_ready)
     );
 
     dffr #(.WIDTH(16)) pipeline_ff_voice0 (
-        .clk(clk), .r(reset), .d(voice_wave_0_0), .q(voice_wave_0)
+        .clk(clk), .r(transport_reset), .d(voice_wave_0_0), .q(voice_wave_0)
     );
+
     dffr #(.WIDTH(16)) pipeline_ff_voice1 (
-        .clk(clk), .r(reset), .d(voice_wave_1_0), .q(voice_wave_1)
+        .clk(clk), .r(transport_reset), .d(voice_wave_1_0), .q(voice_wave_1)
     );
+
     dffr #(.WIDTH(16)) pipeline_ff_voice2 (
-        .clk(clk), .r(reset), .d(voice_wave_2_0), .q(voice_wave_2)
+        .clk(clk), .r(transport_reset), .d(voice_wave_2_0), .q(voice_wave_2)
     );
+
     dffr #(.WIDTH(16)) pipeline_ff_sumwave (
-        .clk(clk), .r(reset), .d(sum_wave_0), .q(sum_wave)
+        .clk(clk), .r(transport_reset), .d(sum_wave_0), .q(sum_wave)
     );
 
     note_player note_player(
         .clk(clk),
-        .reset(reset | reset_player),
+        .reset(transport_reset),
         .play_enable(play),
         .note_to_load(note_to_play),
         .duration_to_load(duration_for_note),
@@ -141,7 +151,7 @@ module music_player(
         .FAST_STOP(BEAT_COUNT/2)
     ) playback_beat_generator (
         .clk(clk),
-        .reset(reset | reset_player),
+        .reset(transport_reset),
         .en(generate_next_sample),
         .fast_forward(fast_forward),
         .beat(beat)
@@ -151,7 +161,7 @@ module music_player(
     wire [15:0] sample_out0;
 
     dffr pipeline_ff_nsg (
-        .clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated)
+        .clk(clk), .r(transport_reset), .d(new_sample_generated0), .q(new_sample_generated)
     );
 
     assign sample_out = sample_out0;
