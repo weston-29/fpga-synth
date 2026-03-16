@@ -69,7 +69,7 @@ module note_context_tracker(
     assign event_voice = (event_metadata[1:0] == 2'b11) ? 2'b00 : event_metadata[1:0];
 
     //------------------------------------------------------------
-    // PAST row (original behavior)
+    // PAST row
     //------------------------------------------------------------
     always @(posedge clk) begin
         if (reset || song_changed) begin
@@ -148,9 +148,13 @@ module note_context_tracker(
     wire rom1_last = (search_addr_1[6:0] == 7'd127);
     wire rom2_last = (search_addr_2[6:0] == 7'd127);
 
-    wire rom0_matches_trigger = rom0_is_note && (search_addr_0 == base_addr_0);
-    wire rom1_matches_trigger = rom1_is_note && (search_addr_1 == base_addr_1);
-    wire rom2_matches_trigger = rom2_is_note && (search_addr_2 == base_addr_2);
+    wire rom0_match = rom0_is_note && (rom0_voice == 2'b00);
+    wire rom1_match = rom1_is_note && (rom1_voice == 2'b01);
+    wire rom2_match = rom2_is_note && (rom2_voice == 2'b10);
+
+    wire rom0_skip_this = skip_current_0 && (search_addr_0 == base_addr_0);
+    wire rom1_skip_this = skip_current_1 && (search_addr_1 == base_addr_1);
+    wire rom2_skip_this = skip_current_2 && (search_addr_2 == base_addr_2);
 
     always @(posedge clk) begin
         if (reset || song_changed) begin
@@ -178,7 +182,7 @@ module note_context_tracker(
             next_valid_1   <= 1'b0;
             next_valid_2   <= 1'b0;
         end else begin
-
+            // Event-triggered restart for the affected voice.
             if (event_new_note && (event_voice == 2'b00)) begin
                 next_note_0    <= 6'd0;
                 next_valid_0   <= 1'b0;
@@ -186,6 +190,32 @@ module note_context_tracker(
                 search_state_0 <= SEARCH_PRIME;
                 skip_current_0 <= 1'b1;
                 base_addr_0    <= {song_sel, event_index};
+            end else begin
+                case (search_state_0)
+                    SEARCH_IDLE: begin
+                        // hold
+                    end
+                    SEARCH_PRIME: begin
+                        search_state_0 <= SEARCH_EVAL;
+                    end
+                    SEARCH_EVAL: begin
+                        if (rom0_match && !rom0_skip_this) begin
+                            next_note_0    <= rom0_note;
+                            next_valid_0   <= 1'b1;
+                            skip_current_0 <= 1'b0;
+                            search_state_0 <= SEARCH_IDLE;
+                        end else if (rom0_last) begin
+                            next_note_0    <= 6'd0;
+                            next_valid_0   <= 1'b0;
+                            skip_current_0 <= 1'b0;
+                            search_state_0 <= SEARCH_IDLE;
+                        end else begin
+                            search_addr_0  <= search_addr_0 + 9'd1;
+                            search_state_0 <= SEARCH_PRIME;
+                        end
+                    end
+                    default: search_state_0 <= SEARCH_IDLE;
+                endcase
             end
 
             if (event_new_note && (event_voice == 2'b01)) begin
@@ -195,6 +225,31 @@ module note_context_tracker(
                 search_state_1 <= SEARCH_PRIME;
                 skip_current_1 <= 1'b1;
                 base_addr_1    <= {song_sel, event_index};
+            end else begin
+                case (search_state_1)
+                    SEARCH_IDLE: begin
+                    end
+                    SEARCH_PRIME: begin
+                        search_state_1 <= SEARCH_EVAL;
+                    end
+                    SEARCH_EVAL: begin
+                        if (rom1_match && !rom1_skip_this) begin
+                            next_note_1    <= rom1_note;
+                            next_valid_1   <= 1'b1;
+                            skip_current_1 <= 1'b0;
+                            search_state_1 <= SEARCH_IDLE;
+                        end else if (rom1_last) begin
+                            next_note_1    <= 6'd0;
+                            next_valid_1   <= 1'b0;
+                            skip_current_1 <= 1'b0;
+                            search_state_1 <= SEARCH_IDLE;
+                        end else begin
+                            search_addr_1  <= search_addr_1 + 9'd1;
+                            search_state_1 <= SEARCH_PRIME;
+                        end
+                    end
+                    default: search_state_1 <= SEARCH_IDLE;
+                endcase
             end
 
             if (event_new_note && (event_voice == 2'b10)) begin
@@ -204,6 +259,31 @@ module note_context_tracker(
                 search_state_2 <= SEARCH_PRIME;
                 skip_current_2 <= 1'b1;
                 base_addr_2    <= {song_sel, event_index};
+            end else begin
+                case (search_state_2)
+                    SEARCH_IDLE: begin
+                    end
+                    SEARCH_PRIME: begin
+                        search_state_2 <= SEARCH_EVAL;
+                    end
+                    SEARCH_EVAL: begin
+                        if (rom2_match && !rom2_skip_this) begin
+                            next_note_2    <= rom2_note;
+                            next_valid_2   <= 1'b1;
+                            skip_current_2 <= 1'b0;
+                            search_state_2 <= SEARCH_IDLE;
+                        end else if (rom2_last) begin
+                            next_note_2    <= 6'd0;
+                            next_valid_2   <= 1'b0;
+                            skip_current_2 <= 1'b0;
+                            search_state_2 <= SEARCH_IDLE;
+                        end else begin
+                            search_addr_2  <= search_addr_2 + 9'd1;
+                            search_state_2 <= SEARCH_PRIME;
+                        end
+                    end
+                    default: search_state_2 <= SEARCH_IDLE;
+                endcase
             end
         end
     end

@@ -33,20 +33,27 @@ module hud (
     output wire [7:0] b
 );
 
+    localparam [7:0] CH_SP = 8'h20;
+
     // ------------------------------------------------------------
     // Convert note codes to ASCII
+    // Keep the reduced 4-renderer structure that was helping timing.
+    // Minimal fix: NEXT uses a display-side valid fallback, because the
+    // tracker appears to be providing note codes while next_valid drops.
     // ------------------------------------------------------------
     wire [31:0] past_ascii_0, past_ascii_1, past_ascii_2;
     wire [31:0] now_ascii_0,  now_ascii_1,  now_ascii_2;
     wire [31:0] next_ascii_0, next_ascii_1, next_ascii_2;
 
-    // Display-side fix:
-    // Show past note if tracker marks it valid OR if a nonzero note code
-    // is already stored in the past slot.
     wire past_disp_valid_0, past_disp_valid_1, past_disp_valid_2;
     assign past_disp_valid_0 = past_valid_0 | (past_note_0 != 6'd0);
     assign past_disp_valid_1 = past_valid_1 | (past_note_1 != 6'd0);
     assign past_disp_valid_2 = past_valid_2 | (past_note_2 != 6'd0);
+
+    wire next_disp_valid_0, next_disp_valid_1, next_disp_valid_2;
+    assign next_disp_valid_0 = next_valid_0 | (next_note_0 != 6'd0);
+    assign next_disp_valid_1 = next_valid_1 | (next_note_1 != 6'd0);
+    assign next_disp_valid_2 = next_valid_2 | (next_note_2 != 6'd0);
 
     note_code_to_ascii p0 (.note_valid(past_disp_valid_0), .note_code(past_note_0), .text_ascii(past_ascii_0));
     note_code_to_ascii p1 (.note_valid(past_disp_valid_1), .note_code(past_note_1), .text_ascii(past_ascii_1));
@@ -56,185 +63,121 @@ module hud (
     note_code_to_ascii n1 (.note_valid(now_valid_1),  .note_code(now_note_1),  .text_ascii(now_ascii_1));
     note_code_to_ascii n2 (.note_valid(now_valid_2),  .note_code(now_note_2),  .text_ascii(now_ascii_2));
 
-    note_code_to_ascii f0 (.note_valid(next_valid_0), .note_code(next_note_0), .text_ascii(next_ascii_0));
-    note_code_to_ascii f1 (.note_valid(next_valid_1), .note_code(next_note_1), .text_ascii(next_ascii_1));
-    note_code_to_ascii f2 (.note_valid(next_valid_2), .note_code(next_note_2), .text_ascii(next_ascii_2));
+    note_code_to_ascii f0 (.note_valid(next_disp_valid_0), .note_code(next_note_0), .text_ascii(next_ascii_0));
+    note_code_to_ascii f1 (.note_valid(next_disp_valid_1), .note_code(next_note_1), .text_ascii(next_ascii_1));
+    note_code_to_ascii f2 (.note_valid(next_disp_valid_2), .note_code(next_note_2), .text_ascii(next_ascii_2));
 
     // ------------------------------------------------------------
-    // Layout tuned for lab-kit visible region:
-    // visible starts at x=88, y=32
-    // place rows near bottom, closer together, pushed right
+    // Reduced-renderer layout
+    // 17 chars wide, explicitly matched across all rows.
+    // Character positions:
+    //  0..3   PAST
+    //  4..6   spaces
+    //  7..10  NOW
+    // 11..12  spaces
+    // 13..16  NEXT
     // ------------------------------------------------------------
-    localparam LABEL_X  = 11'd120;
-    localparam V0_X     = 11'd270;
-    localparam V1_X     = 11'd430;
-    localparam V2_X     = 11'd590;
+    localparam HUD_X    = 11'd170;
+    localparam LABEL_Y  = 10'd352;
+    localparam V0_Y     = 10'd384;
+    localparam V1_Y     = 10'd416;
+    localparam V2_Y     = 10'd448;
 
-    localparam PAST_Y   = 10'd360;
-    localparam NOW_Y    = 10'd398;
-    localparam NEXT_Y   = 10'd436;
+    localparam [8*17-1:0] LABEL_TEXT = {
+        8'h50,8'h41,8'h53,8'h54,
+        CH_SP,CH_SP,CH_SP,
+        8'h4E,8'h4F,8'h57,CH_SP,
+        CH_SP,CH_SP,
+        8'h4E,8'h45,8'h58,8'h54
+    };
 
-    // labels
-    wire lbl_past_on, lbl_now_on, lbl_next_on;
-    wire [11:0] lbl_past_rgb, lbl_now_rgb, lbl_next_rgb;
+    wire [8*17-1:0] voice0_text = {
+        past_ascii_0,
+        CH_SP,CH_SP,CH_SP,
+        now_ascii_0,
+        CH_SP,CH_SP,
+        next_ascii_0
+    };
 
-    text_renderer #(.TEXT_LEN(4)) past_label (
+    wire [8*17-1:0] voice1_text = {
+        past_ascii_1,
+        CH_SP,CH_SP,CH_SP,
+        now_ascii_1,
+        CH_SP,CH_SP,
+        next_ascii_1
+    };
+
+    wire [8*17-1:0] voice2_text = {
+        past_ascii_2,
+        CH_SP,CH_SP,CH_SP,
+        now_ascii_2,
+        CH_SP,CH_SP,
+        next_ascii_2
+    };
+
+    wire        label_on, v0_on, v1_on, v2_on;
+    wire [11:0] label_rgb, v0_rgb, v1_rgb, v2_rgb;
+
+    text_renderer #(.TEXT_LEN(17)) labels_row (
         .pixel_x(x),
         .pixel_y(y),
-        .origin_x(LABEL_X),
-        .origin_y(PAST_Y),
-        .scale_sel(2'b01),
-        .text_ascii({8'h50,8'h41,8'h53,8'h54}),
+        .origin_x(HUD_X),
+        .origin_y(LABEL_Y),
+        .scale_sel(2'b00),
+        .text_ascii(LABEL_TEXT),
         .text_rgb(12'hFFF),
         .enable(valid),
-        .pixel_on(lbl_past_on),
-        .pixel_rgb(lbl_past_rgb)
+        .pixel_on(label_on),
+        .pixel_rgb(label_rgb)
     );
 
-    text_renderer #(.TEXT_LEN(3)) now_label (
+    text_renderer #(.TEXT_LEN(17)) voice0_row (
         .pixel_x(x),
         .pixel_y(y),
-        .origin_x(LABEL_X),
-        .origin_y(NOW_Y),
-        .scale_sel(2'b01),
-        .text_ascii({8'h4E,8'h4F,8'h57}),
-        .text_rgb(12'hFFF),
+        .origin_x(HUD_X),
+        .origin_y(V0_Y),
+        .scale_sel(2'b00),
+        .text_ascii(voice0_text),
+        .text_rgb(12'hF00),
         .enable(valid),
-        .pixel_on(lbl_now_on),
-        .pixel_rgb(lbl_now_rgb)
+        .pixel_on(v0_on),
+        .pixel_rgb(v0_rgb)
     );
 
-    text_renderer #(.TEXT_LEN(4)) next_label (
+    text_renderer #(.TEXT_LEN(17)) voice1_row (
         .pixel_x(x),
         .pixel_y(y),
-        .origin_x(LABEL_X),
-        .origin_y(NEXT_Y),
-        .scale_sel(2'b01),
-        .text_ascii({8'h4E,8'h45,8'h58,8'h54}),
-        .text_rgb(12'hFFF),
-        .enable(valid),
-        .pixel_on(lbl_next_on),
-        .pixel_rgb(lbl_next_rgb)
-    );
-
-    wire [8:0]  note_on;
-    wire [11:0] note_rgb [0:8];
-
-    text_renderer #(.TEXT_LEN(4)) past_v0 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V0_X), .origin_y(PAST_Y + 10'd4),
+        .origin_x(HUD_X),
+        .origin_y(V1_Y),
         .scale_sel(2'b00),
-        .text_ascii(past_ascii_0),
-        .text_rgb(12'hF00),
-        .enable(valid),
-        .pixel_on(note_on[0]),
-        .pixel_rgb(note_rgb[0])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) past_v1 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V1_X), .origin_y(PAST_Y + 10'd4),
-        .scale_sel(2'b00),
-        .text_ascii(past_ascii_1),
+        .text_ascii(voice1_text),
         .text_rgb(12'h0F0),
         .enable(valid),
-        .pixel_on(note_on[1]),
-        .pixel_rgb(note_rgb[1])
+        .pixel_on(v1_on),
+        .pixel_rgb(v1_rgb)
     );
 
-    text_renderer #(.TEXT_LEN(4)) past_v2 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V2_X), .origin_y(PAST_Y + 10'd4),
+    text_renderer #(.TEXT_LEN(17)) voice2_row (
+        .pixel_x(x),
+        .pixel_y(y),
+        .origin_x(HUD_X),
+        .origin_y(V2_Y),
         .scale_sel(2'b00),
-        .text_ascii(past_ascii_2),
+        .text_ascii(voice2_text),
         .text_rgb(12'h00F),
         .enable(valid),
-        .pixel_on(note_on[2]),
-        .pixel_rgb(note_rgb[2])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) now_v0 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V0_X), .origin_y(NOW_Y),
-        .scale_sel(2'b01),
-        .text_ascii(now_ascii_0),
-        .text_rgb(12'hF00),
-        .enable(valid),
-        .pixel_on(note_on[3]),
-        .pixel_rgb(note_rgb[3])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) now_v1 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V1_X), .origin_y(NOW_Y),
-        .scale_sel(2'b01),
-        .text_ascii(now_ascii_1),
-        .text_rgb(12'h0F0),
-        .enable(valid),
-        .pixel_on(note_on[4]),
-        .pixel_rgb(note_rgb[4])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) now_v2 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V2_X), .origin_y(NOW_Y),
-        .scale_sel(2'b01),
-        .text_ascii(now_ascii_2),
-        .text_rgb(12'h00F),
-        .enable(valid),
-        .pixel_on(note_on[5]),
-        .pixel_rgb(note_rgb[5])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) next_v0 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V0_X), .origin_y(NEXT_Y + 10'd4),
-        .scale_sel(2'b00),
-        .text_ascii(next_ascii_0),
-        .text_rgb(12'hF00),
-        .enable(valid),
-        .pixel_on(note_on[6]),
-        .pixel_rgb(note_rgb[6])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) next_v1 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V1_X), .origin_y(NEXT_Y + 10'd4),
-        .scale_sel(2'b00),
-        .text_ascii(next_ascii_1),
-        .text_rgb(12'h0F0),
-        .enable(valid),
-        .pixel_on(note_on[7]),
-        .pixel_rgb(note_rgb[7])
-    );
-
-    text_renderer #(.TEXT_LEN(4)) next_v2 (
-        .pixel_x(x), .pixel_y(y),
-        .origin_x(V2_X), .origin_y(NEXT_Y + 10'd4),
-        .scale_sel(2'b00),
-        .text_ascii(next_ascii_2),
-        .text_rgb(12'h00F),
-        .enable(valid),
-        .pixel_on(note_on[8]),
-        .pixel_rgb(note_rgb[8])
+        .pixel_on(v2_on),
+        .pixel_rgb(v2_rgb)
     );
 
     wire [11:0] hud_rgb =
-        lbl_now_on  ? lbl_now_rgb  :
-        lbl_past_on ? lbl_past_rgb :
-        lbl_next_on ? lbl_next_rgb :
-        note_on[0]  ? note_rgb[0]  :
-        note_on[1]  ? note_rgb[1]  :
-        note_on[2]  ? note_rgb[2]  :
-        note_on[3]  ? note_rgb[3]  :
-        note_on[4]  ? note_rgb[4]  :
-        note_on[5]  ? note_rgb[5]  :
-        note_on[6]  ? note_rgb[6]  :
-        note_on[7]  ? note_rgb[7]  :
-        note_on[8]  ? note_rgb[8]  :
-                      12'h000;
+        label_on ? label_rgb :
+        v0_on    ? v0_rgb    :
+        v1_on    ? v1_rgb    :
+        v2_on    ? v2_rgb    :
+                   12'h000;
 
-    assign pixel_on = lbl_past_on | lbl_now_on | lbl_next_on | (|note_on);
+    assign pixel_on = label_on | v0_on | v1_on | v2_on;
 
     assign r = {hud_rgb[11:8], hud_rgb[11:8]};
     assign g = {hud_rgb[7:4],  hud_rgb[7:4]};
