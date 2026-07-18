@@ -1,0 +1,1 @@
+An RTL digital synthesizer with enveloped chordal audio and RCA wave display with scaling, fast-forward, and note history.  Supports multi-note chord scheduling with a 1-3-5 major chord ROM, harmonic wave synthesis, ADSR dynamics with an exponential LUT, and rewind sampling and fast-forwarding controls. Synthesized and implemented in Verilog on a Xilinx PYNQ-Z2 FPGA.
